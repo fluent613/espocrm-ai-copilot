@@ -135,9 +135,9 @@ Add these custom fields to **Contacts** entity:
 
 ### Natural Language Queries
 ```
-"find contacts in Minneapolis"
+"find Sarah Johnson"
 "show me all notes for Sarah Johnson"
-"create meeting with John tomorrow at 2pm"
+"what is Sarah Johnson's email"
 "link John Smith to Acme Corporation"
 ```
 
