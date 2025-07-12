@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  espocrm-ai-copilot:
+    build: .
+    container_name: espocrm-ai-copilot
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./sessions:/opt/copilot/sessions
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/debug"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Include EspoCRM for a complete setup
+  # Uncomment the sections below if you want to run EspoCRM alongside the copilot
+  
+  # espocrm:
+  #   image: espocrm/espocrm:latest
+  #   container_name: espocrm
+  #   environment:
+  #     - ESPOCRM_DATABASE_HOST=espocrm-mysql
+  #     - ESPOCRM_DATABASE_NAME=espocrm
+  #     - ESPOCRM_DATABASE_USER=espocrm
+  #     - ESPOCRM_DATABASE_PASSWORD=espocrm_password
+  #     - ESPOCRM_ADMIN_USERNAME=admin
+  #     - ESPOCRM_ADMIN_PASSWORD=admin_password
+  #     - ESPOCRM_SITE_URL=http://localhost:8080
+  #   ports:
+  #     - "8080:80"
+  #   volumes:
+  #     - espocrm-data:/var/www/html
+  #   depends_on:
+  #     - espocrm-mysql
+  #   restart: unless-stopped
+
+  # espocrm-mysql:
+  #   image: mysql:8.0
+  #   container_name: espocrm-mysql
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=root_password
+  #     - MYSQL_DATABASE=espocrm
+  #     - MYSQL_USER=espocrm
+  #     - MYSQL_PASSWORD=espocrm_password
+  #   volumes:
+  #     - mysql-data:/var/lib/mysql
+  #   restart: unless-stopped
+  #   command: --default-authentication-plugin=mysql_native_password
+
+volumes:
+  # Persistent storage for sessions
+  sessions:
+    driver: local
+  
+  # Uncomment if using the EspoCRM service above
+  # espocrm-data:
+  #   driver: local
+  # mysql-data:
+  #   driver: local
+
+networks:
+  default:
+    name: espocrm-ai-network

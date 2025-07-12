@@ -1,0 +1,28 @@
+# Core Flask Framework
+Flask==3.0.0
+Flask-Session==0.8.0
+
+# OpenAI Integration
+openai==1.12.0
+
+# HTTP Requests
+requests==2.31.0
+
+# Environment Configuration
+python-dotenv==1.0.0
+
+# Document Processing (Optional - for resume parsing)
+PyMuPDF==1.23.24          # PDF processing
+python-docx==1.1.0        # Word document processing
+
+# Security and Utilities
+Werkzeug==3.0.1
+
+# Development Dependencies (Optional)
+pytest==8.0.0
+pytest-flask==1.3.0
+black==24.1.1
+flake8==7.0.0
+
+# Production Server (Optional)
+gunicorn==21.2.0
