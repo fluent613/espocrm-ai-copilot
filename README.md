@@ -21,7 +21,7 @@ An intelligent AI assistant that transforms your EspoCRM into a natural language
 ### Option 1: Docker (Recommended)
 
 ```bash
-git clone https://github.com/yourusername/espocrm-ai-copilot
+git clone https://github.com/fluent613/espocrm-ai-copilot
 cd espocrm-ai-copilot
 cp .env.example .env
 # Edit .env with your configuration
@@ -31,7 +31,7 @@ docker-compose up -d
 ### Option 2: Manual Installation
 
 ```bash
-git clone https://github.com/yourusername/espocrm-ai-copilot
+git clone https://github.com/fluent613/espocrm-ai-copilot
 cd espocrm-ai-copilot
 pip install -r requirements.txt
 cp .env.example .env
@@ -211,10 +211,9 @@ By using and improving this tool, you're indirectly supporting efforts to feed c
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/espocrm-ai-copilot/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/espocrm-ai-copilot/discussions)
-- **Email**: For security issues or business inquiries
-
+- **Issues**: [GitHub Issues](https://github.com/fluent613/espocrm-ai-copilot/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/fluent613/espocrm-ai-copilot/discussions)
+- **Email**: staylor@fluencydigital.io
 ---
 
 **If this project helps you, please give it a star on GitHub!**
