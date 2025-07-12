@@ -183,6 +183,20 @@ LOGIN_TEMPLATE = '''
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* Mobile Responsive */
+        @media (max-width: 480px) {
+            body { 
+                margin: 20px auto; 
+                padding: 10px;
+            }
+            .login-container {
+                padding: 30px 20px;
+            }
+            .header h1 {
+                font-size: 1.5em;
+            }
+        }
     </style>
 </head>
 <body>
@@ -190,7 +204,7 @@ LOGIN_TEMPLATE = '''
         <div class="header">
             <h1>🤖 EspoCRM AI Copilot</h1>
             <p>AI Assistant for EspoCRM</p>
-            <p style="font-size: 11px; opacity: 0.7;">by Fluency Digital</p>
+            <p style="font-size: 11px; opacity: 0.7;">by <a href="https://fluencydigital.io" target="_blank" style="color: #667eea; text-decoration: none;">Fluency Digital</a></p>
         </div>
         
         <div class="mission">
@@ -261,7 +275,7 @@ LOGIN_TEMPLATE = '''
         <div class="footer">
             <p>Secure access to your AI-powered CRM assistant</p>
             <p style="font-size: 10px; color: #999; margin-top: 5px;">
-                Open source project by Fluency Digital - supporting Feed My Starving Children
+                Open source project by <a href="https://fluencydigital.io" target="_blank" style="color: #667eea; text-decoration: none;">Fluency Digital</a> - supporting Feed My Starving Children
             </p>
         </div>
     </div>
@@ -359,6 +373,39 @@ ENHANCED_TEMPLATE = '''
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .header { padding: 15px; }
+            .logout-btn { position: static; display: block; margin: 10px auto 0; width: fit-content; }
+            .security-status, .session-status { 
+                position: static; 
+                display: inline-block; 
+                margin: 5px 2px; 
+                font-size: 9px;
+            }
+            .website-link {
+                position: static;
+                display: block;
+                margin: 10px auto 0;
+                width: fit-content;
+            }
+            .chat-history { max-height: 300px; }
+            .message { margin-left: 5% !important; margin-right: 5% !important; }
+            .input-form { flex-direction: column; gap: 10px; }
+            .input-form input[type="text"] { margin-bottom: 10px; }
+            .file-upload-area { padding: 15px; }
+        }
+        
+        @media (max-width: 480px) {
+            .header h1 { font-size: 1.5em; }
+            .input-area { padding: 15px; }
+            .message { font-size: 14px; }
+            .empty-state { padding: 20px; }
+            .empty-state ul { font-size: 13px; }
+        }
+        
         .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; position: relative; }
         .logout-btn { 
             position: absolute; 
@@ -487,19 +534,41 @@ ENHANCED_TEMPLATE = '''
             border-radius: 3px;
             font-size: 10px;
             border: 1px solid rgba(40, 167, 69, 0.3);
+            z-index: 10;
         }
         
         /* Session indicator */
         .session-status {
             position: absolute;
-            top: 40px;
-            left: 20px;
+            top: 15px;
+            left: 120px;
             background: rgba(102, 126, 234, 0.2);
             color: white;
-            padding: 3px 6px;
+            padding: 4px 8px;
             border-radius: 3px;
-            font-size: 9px;
+            font-size: 10px;
             border: 1px solid rgba(102, 126, 234, 0.3);
+            z-index: 10;
+        }
+        
+        /* Website link */
+        .website-link {
+            position: absolute;
+            bottom: 15px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 10px;
+            text-decoration: none;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: background 0.3s;
+        }
+        
+        .website-link:hover {
+            background: rgba(255, 255, 255, 0.3);
+            color: white;
         }
     </style>
 </head>
@@ -508,9 +577,10 @@ ENHANCED_TEMPLATE = '''
         <div class="security-status">🔒 Secured</div>
         <div class="session-status">⏰ Extended Session</div>
         <a href="/logout" class="logout-btn">🚪 Logout</a>
+        <a href="https://fluencydigital.io" target="_blank" class="website-link">🌐 fluencydigital.io</a>
         <h1>🤖 EspoCRM AI Copilot</h1>
         <p>AI Assistant with Resume Parser & Natural Language Interface</p>
-        <p style="font-size: 12px; opacity: 0.8;">by Fluency Digital</p>
+        <p style="font-size: 12px; opacity: 0.8;">by <a href="https://fluencydigital.io" target="_blank" style="color: white; text-decoration: none;">Fluency Digital</a></p>
     </div>
     
     <div class="mission">
@@ -543,7 +613,7 @@ ENHANCED_TEMPLATE = '''
                     <li>💬 <strong>Natural conversation:</strong> Ask questions about your contacts and CRM</li>
                     <li>🏢 <strong>Account management:</strong> "create account Acme Corp" or "link John to Acme Corp"</li>
                     <li>📝 <strong>Add notes:</strong> "add note to John: Meeting scheduled for Friday"</li>
-                    <li>🔍 <strong>Search notes:</strong> "search notes for project" or "find notes about meetings"</li>
+                    <li>📋 <strong>View notes:</strong> "show notes for John" or "notes for current contact"</li>
                 </ul>
                 <p><em>Try: "search for John Smith" then "title Senior Developer" or upload a resume file below</em></p>
                 <p><em>Current contact: {{ last_contact.name if last_contact else "None" }}</em></p>
@@ -596,7 +666,7 @@ ENHANCED_TEMPLATE = '''
         <a href="/reset" style="color: #666; text-decoration: none; margin-right: 15px;">🗑️ Reset Session</a>
         <a href="/debug" style="color: #666; text-decoration: none; margin-right: 15px;">🔍 Debug Info</a>
         <div style="font-size: 11px; color: #999; margin-top: 5px;">
-            EspoCRM AI Copilot - Open Source CRM Enhancement by Fluency Digital
+            EspoCRM AI Copilot - Open Source CRM Enhancement by <a href="https://fluencydigital.io" target="_blank" style="color: #667eea; text-decoration: none;">Fluency Digital</a>
         </div>
         <div style="font-size: 10px; color: #666; margin-top: 8px; padding: 8px; background: #f9f9f9; border-radius: 5px; display: inline-block;">
             💝 <strong>Supporting a Good Cause:</strong> This tool was created by a consulting business that donates excess profits to 
