@@ -212,7 +212,6 @@ By using and improving this tool, you're indirectly supporting efforts to feed c
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/fluent613/espocrm-ai-copilot/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/fluent613/espocrm-ai-copilot/discussions)
 - **Email**: staylor@fluencydigital.io
 ---
 
