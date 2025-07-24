@@ -863,14 +863,71 @@ def handle_function_call(function_name: str, arguments: dict, user_input: str = 
                 contact_name=contact_name_arg,
                 updates=updates_arg
             )
-            
+        
         elif function_name == "create_contact":
+            # GUARDRAIL 1: Prevent accidental contact creation when user wants to add notes
+            note_keywords = r'\b(note|notes|ad note|add note|recap|summary|log|comment|memo|follow.?up|remember|jot|write)\b'
+            if re.search(note_keywords, user_input, re.IGNORECASE):
+                logger.warning(f"🚫 GUARDRAIL: Blocked create_contact for note-like input: {user_input[:100]}")
+                # Try to auto-route to add_note instead
+                mentioned_contact = extract_contact_from_input(user_input)
+                if mentioned_contact:
+                    # Extract the note content (everything after the contact name)
+                    note_content = user_input
+                    # Remove common prefixes
+                    for prefix in ["ad note to", "add note to", "note for", "add to", "log for"]:
+                        if prefix in user_input.lower():
+                            parts = user_input.lower().split(prefix, 1)
+                            if len(parts) > 1:
+                                remaining = parts[1].strip()
+                                # Remove the contact name from the beginning
+                                if remaining.lower().startswith(mentioned_contact.lower()):
+                                    note_content = remaining[len(mentioned_contact):].strip()
+                                    # Remove leading colon or punctuation
+                                    note_content = re.sub(r'^[:\-\s]+', '', note_content)
+                                    break
+                    
+                    logger.info(f"🔄 AUTO-ROUTING: Converting to add_note for {mentioned_contact}")
+                    return contact_handler.handle_add_note(mentioned_contact, note_content)
+                else:
+                    return "⚠️ It looks like you want to add a note. Please specify which contact: 'add note to [Name]: your note content'"
+            
+            # GUARDRAIL 2: Check for obvious placeholder names
+            first_name = arguments.get('firstName', '').lower()
+            last_name = arguments.get('lastName', '').lower()
+            
+            if first_name in ['contact', 'person', 'unknown', 'user'] or last_name in ['contact', 'person', 'unknown', 'user']:
+                logger.warning(f"🚫 GUARDRAIL: Placeholder names detected: {first_name} {last_name}")
+                return "⚠️ Cannot create contact with placeholder names. Please provide real first and last names."
+            
+            # OPTIONAL: Suggest adding more info if contact seems minimal (but don't block it)
+            email = arguments.get('emailAddress', '')
+            phone_data = arguments.get('phoneNumberData', [])
+            skills = arguments.get('cSkills', '')
+            company = arguments.get('cCurrentCompany', '')
+            title = arguments.get('cCurrentTitle', '')
+            
+            has_additional_info = any([
+                email and '@' in email,
+                phone_data,
+                skills and len(skills) > 3,
+                company and len(company) > 2,
+                title and len(title) > 2
+            ])
+            
+            # All guardrails passed - proceed with creation
             result_msg, contact_id = crm_manager.create_contact(**arguments)
             if contact_id:
                 name = f"{arguments.get('firstName', '')} {arguments.get('lastName', '')}".strip()
                 set_last_contact(contact_id, name)
                 logger.info(f"🎯 CREATE_CONTACT: Set context to newly created contact: {name} (ID: {contact_id})")
+                
+                # Friendly suggestion if minimal info
+                if not has_additional_info and "✅ Successfully created contact:" in result_msg:
+                    result_msg += "\n\n💡 *Tip: You can add more details like email, phone, company, or skills by saying 'update [name]' or 'add note to [name]'*"
+            
             return result_msg
+        
             
         elif function_name == "get_contact_details":
             return contact_handler.handle_get_contact_details(arguments.get("contact_name"))
@@ -1043,38 +1100,61 @@ def process_with_functions(user_input: str, conversation_history: list) -> str:
             logger.info(f"🎯 AUTO-SWITCHED to: {current_contact['name'] if current_contact else 'None'}")
         
         # STEP 2: Enhanced system prompt with explicit context handling
+        # Replace the system prompt in process_with_functions() with this enhanced version:
+        
         system_prompt = """You are EspoCRM AI Copilot, an intelligent CRM assistant that enhances EspoCRM with AI capabilities.
-
-CRITICAL CONTEXT SWITCHING RULES:
-- When user mentions ANY contact name (first+last or just first name), ALWAYS use that contact explicitly in function calls
-- For "add note to [NAME]:" → add_note(contact_name="[NAME]", note_content="...")
-- For "add notes to [NAME]:" → add_note(contact_name="[NAME]", note_content="...")
-- For "update [NAME]:" → update_contact(contact_name="[NAME]", updates={...})
-- For "[NAME]'s phone is..." → update_contact(contact_name="[NAME]", updates={"phoneNumber": "..."})
-- For "note for [NAME]:" → add_note(contact_name="[NAME]", note_content="...")
-- NEVER rely on context when an explicit name is mentioned in the input
-
-CRITICAL RULES FOR CONTACT CREATION vs UPDATES:
-- When user says "add this contact", "add contact", "create contact", "new contact", "add this person" → ALWAYS use create_contact function
-- When user provides contact info WITHOUT a clear "add" keyword and we have a current contact in context → use update_contact function
-- When user says "update [SPECIFIC NAME]" → use update_contact with that contact_name
-- NEVER confuse adding new contacts with updating existing ones!
-
-NOTE HANDLING - CRITICAL PATTERNS:
-- "add note to [NAME]:" or "add notes to [NAME]:" → add_note(contact_name="[NAME]", note_content="...")
-- "add this note to [NAME]:" → add_note(contact_name="[NAME]", note_content="...")  
-- "note for [NAME]:" → add_note(contact_name="[NAME]", note_content="...")
-- "add to [NAME]'s file:" → add_note(contact_name="[NAME]", note_content="...")
-- ALWAYS extract the contact name explicitly when specified in the command
-- If no contact name specified, use add_note(note_content="...") to use context
-
-EXAMPLES:
-- "add note to Spencer: content" → add_note(contact_name="Spencer", note_content="content")
-- "Spencer's email is new@email.com" → update_contact(contact_name="Spencer", updates={"emailAddress": "new@email.com"})
-- "update Mike's skills: AI expert" → update_contact(contact_name="Mike", updates={"cSkills": "AI expert"})
-- "add notes to Spencer Grover: he does AI work" → add_note(contact_name="Spencer Grover", note_content="he does AI work")
-
-ALWAYS extract and pass the contact_name parameter when a name is mentioned."""
+        
+        CRITICAL: DISTINGUISH BETWEEN ADDING NOTES vs CREATING CONTACTS
+        
+        ADD NOTE PATTERNS (use add_note function):
+        - ANY variation of "add/note/log/recap/memo" + contact name + content
+        - Examples: "add note to John:", "ad note to John:", "note for John:", "log this for John:", "add to John's file:"
+        - ALWAYS use add_note(contact_name="[NAME]", note_content="...") for these patterns
+        - Look for: note, notes, ad note, add note, log, recap, memo, comment, follow-up, remember
+        
+        CREATE CONTACT PATTERNS (use create_contact function):
+        - ONLY when explicitly asked to "create contact", "add contact", "new contact", "add this person"
+        - ONLY when parsing resume content or structured contact information
+        - NEVER use create_contact if the input contains note/log/recap keywords
+        
+        CONTACT UPDATE PATTERNS (use update_contact function):
+        - "[NAME]'s [field] is [value]"
+        - "update [NAME]:" followed by field updates
+        - "change [NAME]'s [field] to [value]"
+        
+        CONTEXT SWITCHING RULES:
+        - When user mentions ANY contact name, ALWAYS use that contact explicitly in function calls
+        - Extract names from patterns like "John Smith", "John", "Smith", even with typos
+        - For ambiguous inputs, prefer add_note over create_contact
+        
+        EXAMPLES OF CORRECT FUNCTION SELECTION:
+        ❌ WRONG: "Ad this note to Brendan: follow up" → create_contact
+        ✅ CORRECT: "Ad this note to Brendan: follow up" → add_note(contact_name="Brendan", note_content="follow up")
+        
+        ❌ WRONG: "note for Spencer: he does AI" → create_contact  
+        ✅ CORRECT: "note for Spencer: he does AI" → add_note(contact_name="Spencer", note_content="he does AI")
+        
+        ✅ CORRECT: "create contact John Smith with email john@test.com" → create_contact
+        ✅ CORRECT: "add new contact Sarah Johnson" → create_contact
+        
+        NEVER CREATE CONTACTS ACCIDENTALLY - when in doubt, ask for clarification!
+        
+        CRITICAL CONTEXT SWITCHING RULES:
+        - When user mentions ANY contact name (first+last or just first name), ALWAYS use that contact explicitly in function calls
+        - For "add note to [NAME]:" → add_note(contact_name="[NAME]", note_content="...")
+        - For "add notes to [NAME]:" → add_note(contact_name="[NAME]", note_content="...")
+        - For "update [NAME]:" → update_contact(contact_name="[NAME]", updates={...})
+        - For "[NAME]'s phone is..." → update_contact(contact_name="[NAME]", updates={"phoneNumber": "..."})
+        - For "note for [NAME]:" → add_note(contact_name="[NAME]", note_content="...")
+        - NEVER rely on context when an explicit name is mentioned in the input
+        
+        CRITICAL RULES FOR CONTACT CREATION vs UPDATES:
+        - When user says "add this contact", "add contact", "create contact", "new contact", "add this person" → ALWAYS use create_contact function
+        - When user provides contact info WITHOUT a clear "add" keyword and we have a current contact in context → use update_contact function
+        - When user says "update [SPECIFIC NAME]" → use update_contact with that contact_name
+        - NEVER confuse adding new contacts with updating existing ones!
+        
+        ALWAYS extract and pass the contact_name parameter when a name is mentioned."""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -1196,11 +1276,10 @@ def index():
                 # Add user message to history
                 session['conversation_history'].append({"role": "user", "content": user_input})
                 
-                # Check for resume content (either uploaded file or text containing resume keywords)
+                # Check for resume content (either uploaded file or EXPLICIT resume parsing requests)
                 is_resume = is_file_upload or any(keyword in user_input.lower() for keyword in [
-                    'parse this resume', 'resume:', 'summary', 'experience', 'education', 
-                    'responsibilities:', 'technical skills:', 'years of experience',
-                    'bachelor', 'master', 'university', 'client:', 'role:', 'environment:'
+                    'parse this resume', 'please parse this resume', 'extract from resume',
+                    'resume parsing', 'parse resume content', 'create contact from resume'
                 ])
                 
                 # Check for explicit "add" or "create" keywords
