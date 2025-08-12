@@ -1,369 +1,171 @@
 # templates.py
-# Simplified templates without iframe complexity
+# Smooth, sticky, compact. Subtle thinking chip; partial updates via fetch.
 
 LOGIN_TEMPLATE = '''
 <!doctype html>
 <html>
 <head>
-    <title>EspoCRM AI Copilot - Login</title>
+    <title>EspoCRM AI Copilot - Welcome</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            max-width: 400px; 
-            margin: 100px auto; 
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+        * { margin:0; padding:0; box-sizing:border-box; }
+        :root { --card-pad: 48px; }
+        html, body { height:100%; }
+        body.no-anim * { animation:none !important; transition:none !important; }
+
+        body{
+            font-family:-apple-system, BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;
+            background:linear-gradient(180deg,#2B4C7E 0%,#4BA3C3 50%,#F5F6FA 100%);
+            min-height:100vh; display:flex; align-items:center; justify-content:center;
+            padding:20px; position:relative; overflow:hidden;
         }
-        .login-container {
-            background: white;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            text-align: center;
+        body.ready::before{
+            animation: float 20s ease-in-out infinite;
         }
-        .header { 
-            color: #333; 
-            margin-bottom: 30px; 
+        body::before{
+            content:''; position:absolute; width:200%; height:200%;
+            background:
+              radial-gradient(circle at 20% 80%, rgba(43,76,126,.08) 0%, transparent 50%),
+              radial-gradient(circle at 80% 20%, rgba(75,163,195,.08) 0%, transparent 50%),
+              radial-gradient(circle at 40% 40%, rgba(43,76,126,.04) 0%, transparent 50%);
+            z-index:0;
         }
-        
-        .mission { 
-            background: #e8f5e8; 
-            padding: 15px; 
-            border-radius: 8px; 
-            margin: 20px 0; 
-            border-left: 4px solid #28a745; 
-            font-size: 14px;
+        @keyframes float{ 0%,100%{transform:translate(0,0)} 33%{transform:translate(-16px,-14px)} 66%{transform:translate(14px,-8px)} }
+
+        .login-card{
+            background:rgba(255,255,255,.98); backdrop-filter:blur(20px);
+            border-radius:24px; padding:var(--card-pad); max-width:440px; width:100%;
+            position:relative; z-index:1;
+            box-shadow:0 12px 36px rgba(16,24,40,.12);
         }
-        
-        input[type="password"] { 
-            width: 100%; 
-            padding: 15px; 
-            border: 2px solid #ddd; 
-            border-radius: 8px; 
-            font-size: 16px;
-            margin: 20px 0 10px 0;
-            box-sizing: border-box;
+
+        .logo-section{ text-align:center; margin-bottom:28px; }
+        .logo{ display:inline-block; width:60px; height:60px; background:linear-gradient(135deg,#2B4C7E,#4BA3C3);
+               border-radius:16px; position:relative; margin-bottom:16px; will-change:transform; }
+        .logo::after{ content:'★'; position:absolute; inset:0; display:grid; place-items:center; color:#fff; font-size:28px; }
+
+        h1{ font-size:28px; font-weight:700; color:#1E1E1E; margin-bottom:6px; letter-spacing:-.3px; }
+        .subtitle{ color:#64748B; font-size:14px; margin-bottom:2px; }
+        .by-line{ font-size:11px; color:#94A3B8; }
+        .by-line a{ color:#4BA3C3; text-decoration:none; font-weight:500; }
+
+        .mission-card{ background:linear-gradient(135deg,#F0FDF4,#DCFCE7); border-radius:16px; padding:14px; margin-bottom:22px; }
+        .mission-text{ font-size:13px; color:#15803D; line-height:1.55; }
+        .mission-text strong{ color:#166534; }
+
+        .form-container{ margin-bottom:18px; }
+        .input-wrapper{ position:relative; margin-bottom:14px; }
+        .input-wrapper::before{ content:'→'; position:absolute; left:14px; top:50%; transform:translateY(-50%); color:#CBD5E1; font-size:16px; }
+        input[type="password"]{
+            width:100%; padding:14px 14px 14px 42px; border:2px solid #E2E8F0; border-radius:12px; font-size:15px; background:#FAFAFA;
+            transition:border-color .2s, box-shadow .2s, background .2s;
         }
-        
-        input[type="password"]:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        input[type="password"]:focus{ outline:none; border-color:#4BA3C3; background:#fff; box-shadow:0 0 0 3px rgba(75,163,195,.1); }
+
+        .remember-section{ display:flex; align-items:center; gap:10px; margin-bottom:16px; padding:10px; background:#F8FAFC; border-radius:10px; cursor:pointer; }
+        .checkbox-wrapper{ position:relative; width:20px; height:20px; }
+        .checkbox-wrapper input{ opacity:0; position:absolute; inset:0; cursor:pointer; }
+        .checkbox-custom{ position:absolute; inset:0; border:2px solid #CBD5E1; border-radius:6px; background:#fff; }
+        .checkbox-wrapper input:checked ~ .checkbox-custom{ background:linear-gradient(135deg,#2B4C7E,#4BA3C3); border-color:#2B4C7E; }
+        .checkbox-wrapper input:checked ~ .checkbox-custom::after{ content:'✓'; position:absolute; inset:0; display:grid; place-items:center; color:#fff; font-size:12px; }
+        .remember-label{ font-size:13px; color:#475569; user-select:none; flex:1; }
+
+        .submit-btn{
+            width:100%; padding:14px; background:linear-gradient(135deg,#2B4C7E,#4BA3C3); color:#fff; border:none; border-radius:12px;
+            font-size:15px; font-weight:600; cursor:pointer;
         }
-        
-        /* Remember Me Checkbox Styling */
-        .remember-me {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 15px 0 20px 0;
-            font-size: 14px;
-            color: #555;
+        .submit-btn:disabled{ opacity:.55; cursor:not-allowed; }
+        .loading{ position:relative; color:transparent !important; }
+        .loading::after{
+            content:''; position:absolute; width:18px; height:18px; top:50%; left:50%; margin:-9px 0 0 -9px;
+            border:2px solid transparent; border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite;
         }
-        .remember-me input[type="checkbox"] {
-            margin-right: 8px;
-            transform: scale(1.2);
+        @keyframes spin{ to{ transform:rotate(360deg) } }
+
+        .error-box{ background:#FEF2F2; border:1px solid #FCA5A5; border-radius:12px; padding:12px; margin-bottom:14px; }
+        .error-text{ color:#DC2626; font-size:13px; }
+
+        .security-badge{ display:flex; align-items:center; justify-content:center; gap:8px; padding:10px; background:#F0F9FF; border-radius:10px; margin-bottom:16px; font-size:12px; color:#0284C7; }
+        .footer{ text-align:center; padding-top:16px; border-top:1px solid #E2E8F0; }
+        .footer-text{ font-size:11px; color:#94A3B8; line-height:1.6; }
+        .footer-text a{ color:#4BA3C3; text-decoration:none; font-weight:500; }
+        .charity-banner{ background:linear-gradient(135deg,#FEF3C7,#FDE68A); border-radius:10px; padding:10px; margin-top:12px; font-size:11px; color:#92400E; text-align:center; }
+
+        @media (max-width:480px){
+            :root{ --card-pad: 32px; }
+            h1{ font-size:24px; }
         }
-        .remember-me label {
-            cursor: pointer;
-            user-select: none;
-        }
-        
-        button { 
-            width: 100%;
-            padding: 15px 20px; 
-            background: #667eea; 
-            color: white; 
-            border: none; 
-            border-radius: 8px; 
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 600;
-            transition: background 0.3s;
-        }
-        button:hover { background: #5a6fd8; }
-        button:disabled { 
-            background: #ccc; 
-            cursor: not-allowed; 
-            opacity: 0.6;
-        }
-        
-        .error { 
-            color: #d32f2f; 
-            margin: 15px 0; 
-            padding: 10px;
-            background: #ffebee;
-            border-radius: 5px;
-            border-left: 4px solid #d32f2f;
-            font-size: 14px;
-        }
-        
-        .warning {
-            color: #f57c00;
-            margin: 15px 0;
-            padding: 10px;
-            background: #fff3e0;
-            border-radius: 5px;
-            border-left: 4px solid #f57c00;
-            font-size: 13px;
-        }
-        
-        .footer {
-            margin-top: 30px;
-            font-size: 12px;
-            color: #666;
-        }
-        
-        .security-notice {
-            background: #e3f2fd;
-            border-left: 4px solid #2196f3;
-            padding: 10px;
-            margin: 15px 0;
-            border-radius: 5px;
-            font-size: 12px;
-            color: #1976d2;
-        }
-        
-        .session-info {
-            background: #f0f8ff;
-            border-left: 4px solid #667eea;
-            padding: 8px;
-            margin: 10px 0;
-            border-radius: 5px;
-            font-size: 11px;
-            color: #667eea;
-        }
-        
-        .rate-limit-info {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 8px;
-            margin: 10px 0;
-            border-radius: 5px;
-            font-size: 12px;
-            color: #856404;
-        }
-        
-        /* Honeypot fields - completely hidden */
-        .honeypot { 
-            position: absolute !important;
-            left: -10000px !important;
-            top: -10000px !important;
-            width: 1px !important;
-            height: 1px !important;
-            overflow: hidden !important;
-            clip: rect(1px, 1px, 1px, 1px) !important;
-            white-space: nowrap !important;
-        }
-        
-        /* Loading state for button */
-        .loading {
-            position: relative;
-            color: transparent;
-        }
-        .loading::after {
-            content: '';
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            top: 50%;
-            left: 50%;
-            margin-left: -8px;
-            margin-top: -8px;
-            border-radius: 50%;
-            border: 2px solid transparent;
-            border-top-color: #ffffff;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* Mobile Responsive */
-        @media (max-width: 480px) {
-            body { 
-                margin: 20px auto; 
-                padding: 10px;
-            }
-            .login-container {
-                padding: 30px 20px;
-            }
-            .header h1 {
-                font-size: 1.5em;
-            }
-        }
+        @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
     </style>
 </head>
-<body>
-    <div class="login-container">
-        <div class="header">
-            <h1>🤖 EspoCRM AI Copilot</h1>
-            <p>AI Assistant for EspoCRM</p>
-            <p style="font-size: 11px; opacity: 0.7;">by <a href="https://fluencydigital.io" target="_blank" style="color: #667eea; text-decoration: none;">Fluency Digital</a></p>
+<body class="no-anim">
+    <div class="login-card">
+        <div class="logo-section">
+            <div class="logo"></div>
+            <h1>EspoCRM AI Copilot</h1>
+            <p class="subtitle">Intelligent CRM Assistant</p>
+            <p class="by-line">by <a href="https://fluencydigital.io" target="_blank">Fluency Digital</a></p>
         </div>
-        
-        <div class="mission">
-            <p><strong>💡 Open Source CRM Enhancement:</strong> Making EspoCRM smarter with AI-powered natural language processing and resume parsing!</p>
+
+        <div class="mission-card">
+            <p class="mission-text"><strong>Open Source CRM Enhancement</strong><br>Making EspoCRM smarter with AI-powered natural language and resume parsing</p>
         </div>
-        
+
         {% if error %}
-            <div class="error">{{ error }}</div>
-            {% if "attempts remaining" in error %}
-                <div class="rate-limit-info">
-                    <strong>⚠️ Security Notice:</strong> Multiple failed attempts detected. Please verify your access token.
-                </div>
-            {% endif %}
-            {% if "temporarily locked" in error or "try again" in error %}
-                <div class="warning">
-                    <strong>🔒 Account Locked:</strong> Too many failed attempts. Please wait before trying again.
-                </div>
-            {% endif %}
+            <div class="error-box"><p class="error-text">{{ error }}</p></div>
         {% endif %}
-        
-        <form method="post" id="loginForm">
-            <!-- Honeypot fields - hidden from real users but visible to bots -->
-            <div class="honeypot">
-                <label for="email">Email (leave blank)</label>
-                <input type="email" id="email" name="email" tabindex="-1" autocomplete="off">
+
+        <form method="post" id="loginForm" class="form-container">
+            <div style="position:absolute; left:-10000px; top:-10000px;">
+                <input type="email" name="email" tabindex="-1" autocomplete="off">
+                <input type="url" name="website" tabindex="-1" autocomplete="off">
+                <input type="tel" name="phone" tabindex="-1" autocomplete="off">
+                <input type="text" name="company" tabindex="-1" autocomplete="off">
             </div>
-            <div class="honeypot">
-                <label for="website">Website (leave blank)</label>
-                <input type="url" id="website" name="website" tabindex="-1" autocomplete="off">
+
+            <div class="input-wrapper">
+                <input type="password" name="token" id="token" placeholder="Enter your access token" autofocus required autocomplete="off">
             </div>
-            <div class="honeypot">
-                <label for="phone">Phone (leave blank)</label>
-                <input type="tel" id="phone" name="phone" tabindex="-1" autocomplete="off">
-            </div>
-            <div class="honeypot">
-                <label for="company">Company (leave blank)</label>
-                <input type="text" id="company" name="company" tabindex="-1" autocomplete="off">
-            </div>
-            
-            <!-- Real login fields -->
-            <input type="password" 
-                   name="token" 
-                   id="token" 
-                   placeholder="Enter access token" 
-                   autofocus 
-                   required
-                   autocomplete="off">
-            
-            <!-- Remember Me Checkbox -->
-            <div class="remember-me">
-                <input type="checkbox" id="remember_me" name="remember_me" checked>
-                <label for="remember_me">🕐 Keep me logged in for 30 days</label>
-            </div>
-            
-            <button type="submit" id="loginBtn">🚀 Access Copilot</button>
+
+            <label class="remember-section" for="remember_me">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="remember_me" name="remember_me" checked>
+                    <div class="checkbox-custom"></div>
+                </div>
+                <span class="remember-label">Keep me logged in for 30 days</span>
+            </label>
+
+            <button type="submit" class="submit-btn" id="loginBtn">Access AI Copilot →</button>
         </form>
-        
-        <div class="session-info" id="sessionInfo">
-            <strong>📝 Session Options:</strong><br>
-            ✅ <strong>Checked:</strong> Stay logged in for 30 days<br>
-            ⬜ <strong>Unchecked:</strong> Stay logged in for 7 days
-        </div>
-        
-        <div class="security-notice">
-            <strong>🔐 Security:</strong> Protected by rate limiting and honeypot security measures
-        </div>
-        
+
+        <div class="security-badge">★ Protected by rate limiting and security measures</div>
+
         <div class="footer">
-            <p>Secure access to your AI-powered CRM assistant</p>
-            <p style="font-size: 10px; color: #999; margin-top: 5px;">
-                Open source project by <a href="https://fluencydigital.io" target="_blank" style="color: #667eea; text-decoration: none;">Fluency Digital</a> - supporting Feed My Starving Children
-            </p>
+            <p class="footer-text">Secure access to your AI-powered CRM assistant<br>Open source project by <a href="https://fluencydigital.io" target="_blank">Fluency Digital</a></p>
+            <div class="charity-banner">★ Supporting Feed My Starving Children</div>
         </div>
     </div>
-    
+
     <script>
-        // Clear form on page load if there was an error
-        document.addEventListener('DOMContentLoaded', function() {
-            const tokenInput = document.getElementById('token');
-            const hasError = document.querySelector('.error');
-            
-            if (hasError && tokenInput) {
-                tokenInput.value = '';
-                tokenInput.focus();
-                setTimeout(() => { tokenInput.value = ''; }, 100);
-            }
-        });
-        
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        // Kill first-paint jitter: remove no-anim after two frames, then start ambient bg
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+            document.body.classList.remove('no-anim');
+            document.body.classList.add('ready');
+        }));
+
+        document.getElementById('loginForm').addEventListener('submit', function(e){
             const btn = document.getElementById('loginBtn');
-            const token = document.getElementById('token').value;
-            
-            if (!token || token.length < 3) {
-                e.preventDefault();
-                alert('Please enter a valid access token');
-                return false;
-            }
-            
-            btn.disabled = true;
-            btn.classList.add('loading');
-            btn.textContent = 'Authenticating...';
-            
-            setTimeout(() => {
-                btn.disabled = false;
-                btn.classList.remove('loading');
-                btn.textContent = '🚀 Access Copilot';
-            }, 5000);
+            const token = document.getElementById('token').value.trim();
+            if (token.length < 3){ e.preventDefault(); alert('Please enter a valid access token'); return; }
+            btn.disabled = true; btn.classList.add('loading'); btn.textContent = '';
         });
-        
-        // Prevent form resubmission
-        let submitted = false;
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
-            if (submitted) {
-                e.preventDefault();
-                return false;
-            }
-            submitted = true;
-        });
-        
-        // Clear honeypot fields on focus
-        document.querySelectorAll('.honeypot input').forEach(input => {
-            input.addEventListener('focus', function() {
-                this.value = '';
-            });
-        });
-        
-        // Show session duration info
-        const checkbox = document.getElementById('remember_me');
-        const sessionInfo = document.getElementById('sessionInfo');
-        
-        if (checkbox && sessionInfo) {
-            checkbox.addEventListener('change', function() {
-                if (this.checked) {
-                    sessionInfo.innerHTML = '<strong>📝 Selected:</strong> 30-day extended session - you won\\'t need to log in again for a month! 🎉';
-                } else {
-                    sessionInfo.innerHTML = '<strong>📝 Selected:</strong> 7-day standard session - you\\'ll stay logged in for a week.';
-                }
-            });
-        }
-        
-        // Force clear field on any error display
-        const errorElement = document.querySelector('.error');
-        if (errorElement) {
-            const tokenField = document.getElementById('token');
-            if (tokenField) {
-                tokenField.value = '';
-                tokenField.removeAttribute('value');
-                setTimeout(() => {
-                    tokenField.value = '';
-                    tokenField.focus();
-                }, 200);
-            }
-        }
+        if (document.querySelector('.error-box')){ const t=document.getElementById('token'); if(t) t.value=''; }
     </script>
 </body>
 </html>
 '''
 
-# Keep your existing ENHANCED_TEMPLATE - it doesn't need changes for the iframe removal
 ENHANCED_TEMPLATE = '''
 <!doctype html>
 <html>
@@ -372,423 +174,512 @@ ENHANCED_TEMPLATE = '''
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            body { padding: 10px; }
-            .header { padding: 15px; }
-            .logout-btn { position: static; display: block; margin: 10px auto 0; width: fit-content; }
-            .security-status, .session-status { 
-                position: static; 
-                display: inline-block; 
-                margin: 5px 2px; 
-                font-size: 9px;
-            }
-            .website-link {
-                position: static;
-                display: block;
-                margin: 10px auto 0;
-                width: fit-content;
-            }
-            .chat-history { max-height: 300px; }
-            .message { margin-left: 5% !important; margin-right: 5% !important; }
-            .input-form { flex-direction: column; gap: 10px; }
-            .input-form input[type="text"] { margin-bottom: 10px; }
-            .file-upload-area { padding: 15px; }
+        *{ margin:0; padding:0; box-sizing:border-box; }
+        :root{ --header-h:64px; }
+        html{ scroll-padding-top: var(--header-h); }
+        html, body{ height:100%; }
+        body{
+            font-family:-apple-system, BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;
+            background:#2B4C7E; color:#1E1E1E; height:100vh; display:flex; flex-direction:column;
+            position:relative; overflow:hidden;
         }
-        
-        @media (max-width: 480px) {
-            .header h1 { font-size: 1.5em; }
-            .input-area { padding: 15px; }
-            .message { font-size: 14px; }
-            .empty-state { padding: 20px; }
-            .empty-state ul { font-size: 13px; }
+        body::before{
+            content:''; position:absolute; width:200%; height:200%;
+            background:
+              radial-gradient(circle at 20% 50%, rgba(75,163,195,.07) 0%, transparent 50%),
+              radial-gradient(circle at 80% 80%, rgba(43,76,126,.07) 0%, transparent 50%);
+            z-index:0; /* no animation to avoid scroll jank */
         }
-        
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; position: relative; }
-        .logout-btn { 
-            position: absolute; 
-            top: 15px; 
-            right: 20px; 
-            background: rgba(255,255,255,0.2); 
-            color: white; 
-            padding: 8px 15px; 
-            border: 1px solid rgba(255,255,255,0.3); 
-            border-radius: 5px; 
-            text-decoration: none; 
-            font-size: 12px;
-            transition: background 0.3s;
+
+        .container{ position:relative; z-index:1; height:100%; display:flex; flex-direction:column; max-width:1200px; margin:0 auto; width:100%; }
+
+        /* Sticky header (no slide animation to avoid jitter) */
+        .header{
+            position:sticky; top:0; z-index:1000;
+            background:rgba(255,255,255,.98); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+            border-bottom:1px solid rgba(226,232,240,.85);
+            min-height:var(--header-h); padding:12px 32px;
+            display:flex; align-items:center; justify-content:space-between;
+            will-change:transform; transform:translateZ(0);
         }
-        .logout-btn:hover { background: rgba(255,255,255,0.3); color: white; }
-        .mission { background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center; border-left: 4px solid #28a745; }
-        .chat-history { max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; margin: 20px 0; }
-        .message { margin: 10px 0; padding: 10px; border-radius: 8px; }
-        .user-message { background: #e3f2fd; margin-left: 20%; }
-        .assistant-message { background: #f8f9fa; margin-right: 20%; }
-        .error-message { background: #f8d7da !important; color: #721c24; }
-        .success-message { background: #d4edda !important; color: #155724; }
-        .input-area { padding: 20px; background: #f8f9fa; border-radius: 10px; }
-        .input-form { display: flex; gap: 10px; margin-bottom: 15px; }
-        input[type="text"] { flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 5px; }
-        button { padding: 12px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        button:hover { background: #5a6fd8; }
-        .empty-state { text-align: center; padding: 40px; color: #666; }
-        
-        /* File upload styles */
-        .file-upload-area { 
-            border: 2px dashed #ddd; 
-            border-radius: 10px; 
-            padding: 20px; 
-            text-align: center; 
-            margin: 10px 0;
-            background: #fafafa;
-            transition: all 0.3s ease;
+        .header-left{ display:flex; align-items:center; gap:14px; }
+        .logo-badge{ width:40px; height:40px; background:linear-gradient(135deg,#2B4C7E,#4BA3C3); border-radius:12px; display:grid; place-items:center; color:#fff; font-size:18px; font-weight:700; }
+        .header-title{ display:flex; flex-direction:column; }
+        .header-title h1{ font-size:19px; font-weight:700; color:#1E1E1E; letter-spacing:-.2px; }
+        .header-subtitle{ font-size:12px; color:#64748B; }
+        .header-subtitle a{ color:#4BA3C3; text-decoration:none; font-weight:500; }
+        .header-right{ display:flex; align-items:center; gap:10px; }
+        .status-badge{ padding:6px 10px; border-radius:16px; font-size:11px; font-weight:500; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+        .status-secure{ background:#DCFCE7; color:#16A34A; }
+        .status-session{ background:#E6F4F7; color:#2B4C7E; }
+        .logout-btn{ padding:8px 14px; background:#F1F5F9; color:#475569; border:1px solid #E2E8F0; border-radius:10px; text-decoration:none; font-size:13px; font-weight:500; }
+
+        .mission-banner{
+            background:linear-gradient(135deg,#E6F4F7,#B8E4F0);
+            padding:10px 24px; display:flex; align-items:center; justify-content:center; gap:10px;
         }
-        .file-upload-area:hover { border-color: #667eea; background: #f0f4ff; }
-        .file-upload-area.dragover { border-color: #667eea; background: #e8f2ff; }
-        .file-upload-area input[type="file"] { display: none; }
-        .file-upload-label { cursor: pointer; color: #666; }
-        .file-upload-label:hover { color: #667eea; }
-        .upload-button { background: #28a745; margin-top: 10px; }
-        .upload-button:hover { background: #218838; }
-        .selected-file { background: #e8f5e8; border-color: #28a745; color: #155724; }
-        
-        .divider { text-align: center; margin: 15px 0; color: #999; }
-        .divider::before, .divider::after { 
-            content: ''; 
-            display: inline-block; 
-            width: 30%; 
-            height: 1px; 
-            background: #ddd; 
-            vertical-align: middle; 
-            margin: 0 10px; 
+        .mission-text{ font-size:13px; color:#2B4C7E; text-align:center; }
+        .mission-text strong{ color:#1E1E1E; }
+
+        .chat-container{ flex:1; display:flex; flex-direction:column; background:#F5F6FA; overflow:hidden; }
+        .messages-wrapper{
+            flex:1; overflow-y:auto; padding:20px 32px; display:flex; flex-direction:column; gap:14px;
+            scroll-behavior:smooth; overscroll-behavior:contain;
+            min-height:0; /* prevents sticky header jump on some browsers */
+            contain: content; /* reduces reflow when swapping inner HTML */
         }
-        
-        /* Loading Spinner Styles */
-        .loading-spinner {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
+
+        /* Welcome + compressed training */
+        .welcome-state{ max-width:980px; margin:0 auto; padding:16px 16px 32px; text-align:center; }
+        .welcome-hero{ padding:40px 0 24px; }
+        .welcome-title{ font-size:30px; font-weight:700; color:#1E1E1E; margin-bottom:12px; }
+        .welcome-subtitle{ font-size:15px; color:#64748B; margin-bottom:20px; }
+
+        .quick-commands{
+            display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:8px 0 18px;
         }
-        
-        .spinner-content {
-            background: white;
-            padding: 40px;
-            border-radius: 15px;
-            text-align: center;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            max-width: 350px;
+        .quick-commands button{
+            border:1px solid #E2E8F0; background:#fff; border-radius:999px; padding:6px 10px; font-size:12px; color:#334155; cursor:pointer;
         }
-        
-        .spinner {
-            width: 50px;
-            height: 50px;
-            margin: 0 auto 20px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
+
+        .instructions-section{ width:100%; padding:24px 12px 40px; }
+        .instructions-head{
+            display:flex; align-items:center; justify-content:space-between; gap:12px; max-width:980px; margin:0 auto 12px;
         }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .instructions-label{ font-size:15px; font-weight:600; color:#1E1E1E; }
+        .instructions-actions{ display:flex; gap:8px; }
+        .instructions-actions button{
+            border:1px solid #E2E8F0; background:#fff; border-radius:8px; padding:6px 10px; font-size:12px; color:#334155; cursor:pointer;
         }
-        
-        .spinner-text {
-            color: #333;
-            font-weight: 600;
-            margin-bottom: 10px;
-            font-size: 18px;
+
+        /* Two-column compact accordion */
+        .features-accordion{
+            max-width:980px; margin:0 auto;
+            display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;
         }
-        
-        .spinner-subtext {
-            color: #666;
-            font-size: 14px;
-            line-height: 1.4;
+        .accordion-item{
+            background:#fff; border:1px solid #E2E8F0; border-radius:12px; overflow:hidden;
         }
-        
-        .processing-message {
-            color: #667eea;
-            font-weight: 500;
-            margin-top: 15px;
-            font-size: 13px;
+        .accordion-header{
+            padding:12px 14px; background:#FAFAFA; cursor:pointer;
+            display:flex; align-items:center; justify-content:space-between;
         }
-        
-        /* Security indicator */
-        .security-status {
-            position: absolute;
-            top: 15px;
-            left: 20px;
-            background: rgba(40, 167, 69, 0.2);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 10px;
-            border: 1px solid rgba(40, 167, 69, 0.3);
-            z-index: 10;
+        .accordion-title{ display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; color:#111827; }
+        .accordion-icon{ width:22px; height:22px; background:linear-gradient(135deg,#2B4C7E,#4BA3C3); border-radius:6px; position:relative; flex-shrink:0; }
+        .accordion-icon::after{ content:'→'; position:absolute; inset:0; display:grid; place-items:center; color:#fff; font-size:12px; }
+        .accordion-arrow{ width:18px; height:18px; position:relative; }
+        .accordion-arrow::after{ content:'▼'; position:absolute; inset:0; display:grid; place-items:center; font-size:10px; color:#64748B; transition:transform .2s; }
+        .accordion-header.active .accordion-arrow::after{ transform:rotate(180deg); }
+
+        .accordion-content{ max-height:0; overflow:hidden; transition:max-height .22s ease; background:#fff; }
+        .accordion-content.active{ max-height:160px; }
+        .accordion-body{ padding:12px 14px; font-size:13px; color:#64748B; line-height:1.55; }
+        .accordion-body code{ background:#F5F6FA; padding:1px 5px; border-radius:4px; font-family:'SF Mono',Monaco,monospace; font-size:12px; color:#2B4C7E; }
+
+        /* Compact mode tightens spacing */
+        .features-accordion.compact .accordion-header{ padding:10px 12px; }
+        .features-accordion.compact .accordion-body{ padding:10px 12px; font-size:12.5px; }
+        .features-accordion.compact .accordion-content.active{ max-height:120px; }
+
+        /* Messages */
+        .message{ max-width:72%; }
+        .message-user{ align-self:flex-end; }
+        .message-assistant{ align-self:flex-start; }
+        .message-bubble{ padding:12px 14px; border-radius:18px; font-size:14px; line-height:1.55; }
+        .message-user .message-bubble{ background:#007AFF; color:#fff; border-bottom-right-radius:4px; }
+        .message-assistant .message-bubble{ background:#fff; color:#111827; border:1px solid #E2E8F0; border-bottom-left-radius:4px; }
+        .message-label{ font-size:11px; color:#94A3B8; margin-bottom:3px; padding:0 2px; }
+
+        /* Thinking chip + typing bubble */
+        .thinking-row{ display:none; align-items:center; gap:8px; font-size:12px; color:#64748B; margin-bottom:6px; }
+        .spinner-star{ width:18px; height:18px; border-radius:50%; display:inline-grid; place-items:center; border:1px solid #CBD5E1; }
+        .spinner-star::before{ content:'★'; font-size:12px; color:#4BA3C3; animation:spin 1.2s linear infinite; }
+        @keyframes spin{ to{ transform:rotate(360deg) } }
+        .typing .message-bubble{ background:#fff; border:1px dashed #CBD5E1; color:#64748B; }
+        .typing-dots span{ display:inline-block; width:4px; height:4px; border-radius:50%; background:#94A3B8; margin:0 2px; animation:blink 1.2s infinite; }
+        .typing-dots span:nth-child(2){ animation-delay:.2s; }
+        .typing-dots span:nth-child(3){ animation-delay:.4s; }
+        @keyframes blink{ 0%,80%,100%{opacity:.25} 40%{opacity:1} }
+
+        /* Input */
+        .input-area{ background:#fff; border-top:1px solid #E2E8F0; padding:16px 32px; }
+        .input-container{ max-width:980px; margin:0 auto; }
+        .input-form{ display:flex; gap:10px; margin-bottom:10px; }
+        .input-field{ flex:1; padding:12px 14px; border:2px solid #E2E8F0; border-radius:12px; font-size:14px; background:#FAFAFA; transition:border-color .2s, box-shadow .2s, background .2s; }
+        .input-field:focus{ outline:none; border-color:#4BA3C3; background:#fff; box-shadow:0 0 0 3px rgba(75,163,195,.1); }
+        .send-btn{ padding:12px 20px; background:linear-gradient(135deg,#2B4C7E,#4BA3C3); color:#fff; border:none; border-radius:12px; font-size:14px; font-weight:600; cursor:pointer; }
+        .send-btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+        /* Upload */
+        .divider{ text-align:center; margin:12px 0; position:relative; }
+        .divider::before,.divider::after{ content:''; position:absolute; top:50%; width:calc(50% - 30px); height:1px; background:#E2E8F0; }
+        .divider::before{ left:0; } .divider::after{ right:0; }
+        .divider-text{ font-size:11px; color:#94A3B8; background:#fff; padding:0 12px; position:relative; }
+        .file-upload-zone{ border:2px dashed #CBD5E1; border-radius:12px; padding:20px; text-align:center; background:#FAFAFA; transition:all .2s; cursor:pointer; }
+        .file-upload-zone:hover{ border-color:#4BA3C3; background:#F0F8FA; }
+        .file-upload-zone.dragover{ border-color:#4BA3C3; background:#E6F4F7; transform:scale(1.01); }
+        .file-upload-zone input[type="file"]{ display:none; }
+        .upload-icon{ display:inline-block; width:44px; height:44px; background:linear-gradient(135deg,#E2E8F0,#CBD5E1); border-radius:12px; margin-bottom:10px; position:relative; }
+        .upload-icon::after{ content:'↑'; position:absolute; inset:0; display:grid; place-items:center; font-size:22px; color:#64748B; }
+        .upload-text{ font-size:14px; color:#475569; margin-bottom:2px; }
+        .upload-subtext{ font-size:12px; color:#94A3B8; }
+        .file-selected{ background:#F0FDF4; border-color:#86EFAC; }
+        .file-selected .upload-icon{ background:linear-gradient(135deg,#86EFAC,#22C55E); }
+        .file-selected .upload-icon::after{ content:'✓'; color:#fff; }
+
+        /* Footer */
+        .footer-bar{ background:#fff; border-top:1px solid #E2E8F0; padding:10px 32px; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:#94A3B8; }
+        .footer-links{ display:flex; gap:16px; }
+        .footer-links a{ color:#64748B; text-decoration:none; }
+        .charity-note{ color:#92400E; background:#FEF3C7; padding:4px 8px; border-radius:6px; }
+
+        @media (max-width: 900px){
+            .features-accordion{ grid-template-columns:1fr; }
         }
-        
-        /* Session indicator */
-        .session-status {
-            position: absolute;
-            top: 15px;
-            left: 120px;
-            background: rgba(102, 126, 234, 0.2);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 10px;
-            border: 1px solid rgba(102, 126, 234, 0.3);
-            z-index: 10;
+        @media (max-width: 768px){
+            .header{ padding:10px 20px; }
+            .status-badge{ display:none; }
+            .messages-wrapper{ padding:16px 20px; }
+            .message{ max-width:88%; }
+            .input-area{ padding:14px 20px; }
+            .input-form{ flex-direction:column; }
+            .footer-bar{ flex-direction:column; gap:8px; text-align:center; padding:10px 20px; }
+            .welcome-title{ font-size:24px; }
+            .welcome-subtitle{ font-size:14px; }
         }
-        
-        /* Website link */
-        .website-link {
-            position: absolute;
-            bottom: 15px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 10px;
-            text-decoration: none;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            transition: background 0.3s;
-        }
-        
-        .website-link:hover {
-            background: rgba(255, 255, 255, 0.3);
-            color: white;
-        }
+        @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="security-status">🔒 Secured</div>
-        <div class="session-status">⏰ Extended Session</div>
-        <a href="/logout" class="logout-btn">🚪 Logout</a>
-        <a href="https://fluencydigital.io" target="_blank" class="website-link">🌐 fluencydigital.io</a>
-        <h1>🤖 EspoCRM AI Copilot</h1>
-        <p>AI Assistant with Resume Parser & Natural Language Interface</p>
-        <p style="font-size: 12px; opacity: 0.8;">by <a href="https://fluencydigital.io" target="_blank" style="color: white; text-decoration: none;">Fluency Digital</a></p>
-    </div>
-    
-    <div class="mission">
-        <p><strong>🚀 Open Source AI for EspoCRM:</strong> This tool enhances your EspoCRM with intelligent contact management, resume parsing, and natural language processing. Created by Fluency Digital.</p>
-    </div>
-    
-    <div class="chat-history">
-        {% if history %}
-            {% for msg in history %}
-                {% set message_class = 'user-message' if msg.role == 'user' else 'assistant-message' %}
-                {% if msg.role == 'assistant' and msg.content.startswith('❌') %}
-                    {% set message_class = message_class + ' error-message' %}
-                {% elif msg.role == 'assistant' and msg.content.startswith('✅') %}
-                    {% set message_class = message_class + ' success-message' %}
-                {% endif %}
-                
-                <div class="message {{ message_class }}">
-                    <strong>{{ msg.role.title() }}:</strong> 
-                    {{ msg.content | replace('**', '<strong>') | replace('**', '</strong>') | safe }}
+    <div class="container">
+        <!-- Sticky Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="logo-badge">★</div>
+                <div class="header-title">
+                    <h1>EspoCRM AI Copilot</h1>
+                    <p class="header-subtitle">by <a href="https://fluencydigital.io" target="_blank">Fluency Digital</a></p>
                 </div>
-            {% endfor %}
-        {% else %}
-            <div class="empty-state">
-                <h3>👋 Welcome to EspoCRM AI Copilot!</h3>
-                <p><strong>🚀 Ready to enhance your EspoCRM:</strong></p>
-                <ul style="text-align: left; display: inline-block;">
-                    <li>🔍 <strong>Smart contact search:</strong> "search for John Smith" or "find john@example.com"</li>
-                    <li>📱 <strong>Quick updates:</strong> Search someone, then type "phone 555-1234" to update</li>
-                    <li>📄 <strong>Resume parser:</strong> Upload PDF, DOC, or TXT files to auto-create contacts</li>
-                    <li>💬 <strong>Natural conversation:</strong> Ask questions about your contacts and CRM</li>
-                    <li>🏢 <strong>Account management:</strong> "create account Acme Corp" or "link John to Acme Corp"</li>
-                    <li>📝 <strong>Add notes:</strong> "add note to John: Meeting scheduled for Friday"</li>
-                    <li>📋 <strong>View notes:</strong> "show notes for John" or "notes for current contact"</li>
-                </ul>
-                <p><em>Try: "search for John Smith" then "title Senior Developer" or upload a resume file below</em></p>
-                <p><em>Current contact: {{ last_contact.name if last_contact else "None" }}</em></p>
             </div>
-        {% endif %}
-    </div>
-    
-    <div class="input-area">
-        <!-- Text Input Form -->
-        <form method="post" class="input-form" id="textForm" onsubmit="showSpinner('Processing your request...')">
-            <input type="text" name="prompt" placeholder="Search contacts, ask questions, or update contact info..." autofocus>
-            <button type="submit">Send</button>
-        </form>
-        
-        <div class="divider">OR</div>
-        
-        <!-- File Upload Form -->
-        <form method="post" enctype="multipart/form-data" id="fileForm" onsubmit="showSpinner('Parsing resume and creating contact...')">
-            <div class="file-upload-area" id="fileUploadArea">
-                <label for="resume_file" class="file-upload-label">
-                    📄 Click to upload a resume file (PDF, DOC, TXT)<br>
-                    <small>Or drag and drop here</small><br>
-                    <small style="color: #666; font-size: 10px;">Will automatically create/update contact with extracted info</small>
-                </label>
-                <input type="file" id="resume_file" name="resume_file" 
-                       accept=".pdf,.doc,.docx,.txt,.rtf"
-                       onchange="handleFileSelect(this)">
-                <button type="submit" class="upload-button" id="uploadBtn" style="display:none;">
-                    📤 Upload & Parse Resume
-                </button>
+            <div class="header-right">
+                <span class="status-badge status-secure">→ Secured</span>
+                <span class="status-badge status-session">→ Extended Session</span>
+                <a href="/logout" class="logout-btn">Sign Out</a>
             </div>
-        </form>
-    </div>
-    
-    <!-- Loading Spinner -->
-    <div class="loading-spinner" id="loadingSpinner">
-        <div class="spinner-content">
-            <div class="spinner"></div>
-            <div class="spinner-text" id="spinnerText">Processing...</div>
-            <div class="spinner-subtext">
-                Please wait while we process your request.<br>
-                This may take a few moments for complex operations.
+        </div>
+
+        <!-- Mission -->
+        <div class="mission-banner">
+            <p class="mission-text"><strong>→ Open Source AI for EspoCRM:</strong> Natural language, contact ops, resume parsing</p>
+        </div>
+
+        <!-- Chat -->
+        <div class="chat-container">
+            <div class="messages-wrapper" id="messagesWrapper">
+                {% if history %}
+                    {% for msg in history %}
+                        <div class="message message-{{ msg.role }}{% if msg.role == 'assistant' and msg.content.startswith('❌') %} message-error{% elif msg.role == 'assistant' and msg.content.startswith('✅') %} message-success{% endif %}">
+                            <div class="message-label">{% if msg.role == 'user' %}You{% else %}AI Assistant{% endif %}</div>
+                            <div class="message-bubble">
+                                {{ msg.content | replace('**','<strong>') | replace('**','</strong>') | safe }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="welcome-state">
+                        <div class="welcome-hero">
+                            <h2 class="welcome-title">→ Welcome to Your AI Assistant</h2>
+                            <p class="welcome-subtitle">Work faster in EspoCRM with natural language</p>
+
+                            <div class="quick-commands" id="quickCommands">
+                                <button data-fill="search for John">search for John</button>
+                                <button data-fill="create contact Jane Doe">create contact Jane Doe</button>
+                                <button data-fill="link John to Acme Corp">link John to Acme Corp</button>
+                                <button data-fill="add note: called, left voicemail">add note: called, left voicemail</button>
+                                <button data-fill="show contacts from Chicago">show contacts from Chicago</button>
+                            </div>
+                        </div>
+
+                        <div class="instructions-section" id="instructionsSection">
+                            <div class="instructions-head">
+                                <div class="instructions-label">→ Feature Guide</div>
+                                <div class="instructions-actions">
+                                    <button id="compactToggle">Compact</button>
+                                    <button id="expandAll">Expand all</button>
+                                    <button id="collapseAll">Collapse all</button>
+                                </div>
+                            </div>
+
+                            <div class="features-accordion" id="featuresAccordion">
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                                        <div class="accordion-title"><span class="accordion-icon"></span>Smart Contact Search</div>
+                                        <div class="accordion-arrow"></div>
+                                    </div>
+                                    <div class="accordion-content">
+                                        <div class="accordion-body">
+                                            Find people by name, email, or parts of either. Try <code>search for John Smith</code> or <code>find john@acme.com</code>.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                                        <div class="accordion-title"><span class="accordion-icon"></span>Quick Updates</div>
+                                        <div class="accordion-arrow"></div>
+                                    </div>
+                                    <div class="accordion-content">
+                                        <div class="accordion-body">
+                                            After a search, set fields fast: <code>phone 555-1234</code>, <code>email jane@acme.com</code>, <code>title Sr. Developer</code>.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                                        <div class="accordion-title"><span class="accordion-icon"></span>Resume Parser</div>
+                                        <div class="accordion-arrow"></div>
+                                    </div>
+                                    <div class="accordion-content">
+                                        <div class="accordion-body">
+                                            Drop in PDF/DOC/TXT resumes. The AI extracts info and creates/updates the contact automatically.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                                        <div class="accordion-title"><span class="accordion-icon"></span>Natural Language Filters</div>
+                                        <div class="accordion-arrow"></div>
+                                    </div>
+                                    <div class="accordion-content">
+                                        <div class="accordion-body">
+                                            Ask it plainly: <code>show contacts from Chicago</code>, <code>who works at Acme?</code>, <code>list contacts without email</code>.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                                        <div class="accordion-title"><span class="accordion-icon"></span>Account Management</div>
+                                        <div class="accordion-arrow"></div>
+                                    </div>
+                                    <div class="accordion-content">
+                                        <div class="accordion-body">
+                                            Create/link accounts: <code>create account Acme Corp</code>, <code>link John to Acme Corp</code>, <code>show all at Microsoft</code>.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="accordion-item">
+                                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                                        <div class="accordion-title"><span class="accordion-icon"></span>Notes & Activities</div>
+                                        <div class="accordion-arrow"></div>
+                                    </div>
+                                    <div class="accordion-content">
+                                        <div class="accordion-body">
+                                            Log interactions: <code>add note: meeting Friday</code>, <code>show notes for Jane</code>, <code>add note to current: LM</code>.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div><!-- /features-accordion -->
+                        </div><!-- /instructions-section -->
+                    </div><!-- /welcome-state -->
+                {% endif %}
+            </div><!-- /messages-wrapper -->
+
+            <!-- Input -->
+            <div class="input-area">
+                <div class="input-container">
+                    <div class="thinking-row" id="thinkingRow">
+                        <span class="spinner-star" aria-hidden="true"></span>
+                        <span>AI is thinking...</span>
+                    </div>
+
+                    <form method="post" class="input-form" id="textForm">
+                        <input type="text" name="prompt" class="input-field" placeholder="Type a message... (try: 'search for John' or 'create contact')" autofocus>
+                        <button type="submit" class="send-btn" id="sendBtn">Send</button>
+                    </form>
+
+                    <div class="divider"><span class="divider-text">or upload a resume</span></div>
+
+                    <form method="post" enctype="multipart/form-data" id="fileForm">
+                        <div class="file-upload-zone" id="fileUploadZone">
+                            <label for="resume_file">
+                                <div class="upload-icon"></div>
+                                <div class="upload-text" id="uploadText">Drop a resume here or click to browse</div>
+                                <div class="upload-subtext" id="uploadSubtext">PDF, DOC, DOCX, TXT files supported</div>
+                            </label>
+                            <input type="file" id="resume_file" name="resume_file" accept=".pdf,.doc,.docx,.txt,.rtf">
+                        </div>
+                    </form>
+                </div>
             </div>
-            <div class="processing-message" id="processingMessage"></div>
+        </div><!-- /chat-container -->
+
+        <!-- Footer -->
+        <div class="footer-bar">
+            <div class="footer-links">
+                <a href="/">→ Refresh</a>
+                <a href="/reset">→ Reset Session</a>
+                <a href="/debug">→ Debug Info</a>
+            </div>
+            <div class="charity-note">★ Supporting Feed My Starving Children</div>
         </div>
-    </div>
-    
-    <div style="text-align: center; margin-top: 20px;">
-        <a href="/" style="color: #666; text-decoration: none; margin-right: 15px;">🔄 Refresh</a>
-        <a href="/reset" style="color: #666; text-decoration: none; margin-right: 15px;">🗑️ Reset Session</a>
-        <a href="/debug" style="color: #666; text-decoration: none; margin-right: 15px;">🔍 Debug Info</a>
-        <div style="font-size: 11px; color: #999; margin-top: 5px;">
-            EspoCRM AI Copilot - Open Source CRM Enhancement by <a href="https://fluencydigital.io" target="_blank" style="color: #667eea; text-decoration: none;">Fluency Digital</a>
-        </div>
-        <div style="font-size: 10px; color: #666; margin-top: 8px; padding: 8px; background: #f9f9f9; border-radius: 5px; display: inline-block;">
-            💝 <strong>Supporting a Good Cause:</strong> This tool was created by a consulting business that donates excess profits to 
-            <a href="https://fmsc.org" target="_blank" style="color: #28a745; text-decoration: none;">Feed My Starving Children</a>. 
-            Consider supporting their mission to feed hungry children worldwide.
-        </div>
-    </div>
-    
+    </div><!-- /container -->
+
     <script>
-        // Auto-scroll chat to bottom
-        const chatHistory = document.querySelector('.chat-history');
-        if (chatHistory) {
-            chatHistory.scrollTop = chatHistory.scrollHeight;
+        // Keep a live reference to the messages wrapper
+        let messagesWrapper = document.getElementById('messagesWrapper');
+
+        // Initial scroll positioning
+        if (messagesWrapper){
+            const hasMessages = messagesWrapper.querySelector('.message');
+            messagesWrapper.scrollTop = hasMessages ? messagesWrapper.scrollHeight : 0;
         }
-        
-        // Loading spinner functions
-        function showSpinner(message) {
-            const spinner = document.getElementById('loadingSpinner');
-            const spinnerText = document.getElementById('spinnerText');
-            const processingMessage = document.getElementById('processingMessage');
-            
-            if (spinner && spinnerText) {
-                spinnerText.textContent = message || 'Processing...';
-                processingMessage.textContent = 'Working with OpenAI and your EspoCRM...';
-                spinner.style.display = 'flex';
-                
-                const buttons = document.querySelectorAll('button[type="submit"]');
-                buttons.forEach(btn => {
-                    btn.disabled = true;
-                    btn.style.opacity = '0.6';
+
+        function toggleAccordion(header){
+            const content = header.nextElementSibling;
+            const active = header.classList.contains('active');
+            // Close others
+            document.querySelectorAll('.accordion-header').forEach(h=>{
+                h.classList.remove('active');
+                if (h.nextElementSibling) h.nextElementSibling.classList.remove('active');
+            });
+            if (!active){ header.classList.add('active'); content.classList.add('active'); }
+        }
+
+        // Compact/expand controls
+        const featuresAccordion = document.getElementById('featuresAccordion');
+        const compactToggle = document.getElementById('compactToggle');
+        const expandAllBtn = document.getElementById('expandAll');
+        const collapseAllBtn = document.getElementById('collapseAll');
+
+        if (compactToggle){
+            compactToggle.addEventListener('click', ()=>{
+                featuresAccordion.classList.toggle('compact');
+            });
+        }
+        if (expandAllBtn){
+            expandAllBtn.addEventListener('click', ()=>{
+                document.querySelectorAll('.accordion-header').forEach(h=>{
+                    h.classList.add('active');
+                    if (h.nextElementSibling) h.nextElementSibling.classList.add('active');
                 });
-            }
+            });
         }
-        
-        function hideSpinner() {
-            const spinner = document.getElementById('loadingSpinner');
-            if (spinner) {
-                spinner.style.display = 'none';
-                
-                const buttons = document.querySelectorAll('button[type="submit"]');
-                buttons.forEach(btn => {
-                    btn.disabled = false;
-                    btn.style.opacity = '1';
+        if (collapseAllBtn){
+            collapseAllBtn.addEventListener('click', ()=>{
+                document.querySelectorAll('.accordion-header').forEach(h=>{
+                    h.classList.remove('active');
+                    if (h.nextElementSibling) h.nextElementSibling.classList.remove('active');
                 });
+            });
+        }
+
+        // Quick command chips
+        const quick = document.getElementById('quickCommands');
+        const textForm = document.getElementById('textForm');
+        const sendBtn = document.getElementById('sendBtn');
+        if (quick && textForm){
+            quick.addEventListener('click', (e)=>{
+                const b = e.target.closest('button[data-fill]');
+                if (!b) return;
+                const input = textForm.querySelector('input[name="prompt"]');
+                if (input){ input.value = b.dataset.fill; input.focus(); }
+            });
+        }
+
+        // Thinking helpers
+        const thinkingRow = document.getElementById('thinkingRow');
+        function showThinking(){ if (thinkingRow) thinkingRow.style.display='flex'; insertTypingBubble(); }
+        function hideThinking(){ if (thinkingRow) thinkingRow.style.display='none'; removeTypingBubble(); }
+        function insertTypingBubble(){
+            if (!messagesWrapper) return;
+            if (messagesWrapper.querySelector('.message-assistant.typing')) return;
+            const wrap = document.createElement('div');
+            wrap.className='message message-assistant typing';
+            wrap.innerHTML='<div class="message-label">AI Assistant</div><div class="message-bubble"><span class="typing-dots"><span></span><span></span><span></span></span></div>';
+            messagesWrapper.appendChild(wrap);
+            messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
+        }
+        function removeTypingBubble(){
+            const t = document.querySelector('.message-assistant.typing');
+            if (t) t.remove();
+        }
+
+        // Partial POST update (swap #messagesWrapper only)
+        async function submitWithFetch(form, onFinally){
+            const url = window.location.href;
+            const formData = new FormData(form);
+            try{
+                const res = await fetch(url, { method:'POST', body:formData, headers:{'X-Requested-With':'fetch'}, credentials:'same-origin' });
+                const html = await res.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const newMessages = doc.querySelector('#messagesWrapper');
+                if (newMessages){
+                    messagesWrapper.replaceWith(newMessages);
+                    messagesWrapper = document.getElementById('messagesWrapper');
+                    messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
+                } else {
+                    window.location.reload();
+                }
+            } catch(e){
+                form.submit(); // graceful fallback
+            } finally {
+                if (onFinally) onFinally();
             }
         }
-        
-        // Enhanced file upload handling
-        function handleFileSelect(input) {
-            const uploadArea = document.getElementById('fileUploadArea');
-            const uploadBtn = document.getElementById('uploadBtn');
-            const label = uploadArea.querySelector('.file-upload-label');
-            
-            if (input.files && input.files[0]) {
-                const file = input.files[0];
-                const fileSize = (file.size / 1024 / 1024).toFixed(2);
-                
-                label.innerHTML = `📄 Selected: ${file.name} (${fileSize} MB)<br><small>Ready to parse and create contact</small>`;
-                uploadArea.classList.add('selected-file');
-                uploadBtn.style.display = 'block';
-                uploadBtn.innerHTML = '🚀 Upload & Parse Resume';
-                
-                setTimeout(() => {
-                    showSpinner('Uploading and parsing resume...');
-                    document.getElementById('fileForm').submit();
-                }, 500);
-            }
-        }
-        
-        // Drag and drop functionality
-        const fileUploadArea = document.getElementById('fileUploadArea');
-        const fileInput = document.getElementById('resume_file');
-        
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            fileUploadArea.addEventListener(eventName, preventDefaults, false);
-        });
-        
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        
-        ['dragenter', 'dragover'].forEach(eventName => {
-            fileUploadArea.addEventListener(eventName, highlight, false);
-        });
-        
-        ['dragleave', 'drop'].forEach(eventName => {
-            fileUploadArea.addEventListener(eventName, unhighlight, false);
-        });
-        
-        function highlight(e) {
-            fileUploadArea.classList.add('dragover');
-        }
-        
-        function unhighlight(e) {
-            fileUploadArea.classList.remove('dragover');
-        }
-        
-        fileUploadArea.addEventListener('drop', handleDrop, false);
-        
-        function handleDrop(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            
-            if (files.length > 0) {
-                fileInput.files = files;
-                handleFileSelect(fileInput);
-            }
-        }
-        
-        // Enhanced form submission
-        document.getElementById('textForm').addEventListener('submit', function(e) {
-            const input = this.querySelector('input[name="prompt"]');
-            if (!input.value.trim()) {
+
+        if (textForm){
+            textForm.addEventListener('submit', function(e){
+                const input = this.querySelector('input[name="prompt"]');
+                if (!input.value.trim()){ e.preventDefault(); return; }
                 e.preventDefault();
-                alert('Please enter a message first');
-                return false;
-            }
-            
-            const message = input.value.length > 50 ? 'Processing your request...' : 'Searching and updating...';
-            showSpinner(message);
-        });
+                sendBtn.disabled = true;
+                showThinking();
+                submitWithFetch(this, ()=>{
+                    hideThinking();
+                    sendBtn.disabled = false;
+                    input.value = '';
+                    input.focus();
+                });
+            });
+        }
+
+        // Upload handling (AJAX)
+        const fileZone = document.getElementById('fileUploadZone');
+        const fileInput = document.getElementById('resume_file');
+        const uploadText = document.getElementById('uploadText');
+        const uploadSubtext = document.getElementById('uploadSubtext');
+
+        function preventDefaults(e){ e.preventDefault(); e.stopPropagation(); }
+        if (fileZone){
+            ['dragenter','dragover','dragleave','drop'].forEach(evt=>fileZone.addEventListener(evt, preventDefaults));
+            ['dragenter','dragover'].forEach(evt=>fileZone.addEventListener(evt, ()=>fileZone.classList.add('dragover')));
+            ['dragleave','drop'].forEach(evt=>fileZone.addEventListener(evt, ()=>fileZone.classList.remove('dragover')));
+            fileZone.addEventListener('drop', e=>{
+                const files = e.dataTransfer.files;
+                if (files.length>0){ fileInput.files = files; startFileUpload(); }
+            });
+        }
+        if (fileInput){ fileInput.addEventListener('change', startFileUpload); }
+
+        function startFileUpload(){
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) return;
+            fileZone.classList.add('file-selected');
+            if (uploadText) uploadText.textContent = f.name;
+            if (uploadSubtext) uploadSubtext.textContent = 'Parsing and creating contact...';
+            showThinking();
+            submitWithFetch(document.getElementById('fileForm'), ()=>{
+                hideThinking();
+                fileInput.value = '';
+                fileZone.classList.remove('file-selected');
+                if (uploadText) uploadText.textContent = 'Drop a resume here or click to browse';
+                if (uploadSubtext) uploadSubtext.textContent = 'PDF, DOC, DOCX, TXT files supported';
+            });
+        }
     </script>
 </body>
 </html>
