@@ -527,158 +527,308 @@ ENHANCED_TEMPLATE = '''
             <div class="charity-note">★ Supporting Feed My Starving Children</div>
         </div>
     </div><!-- /container -->
-
     <script>
         // Keep a live reference to the messages wrapper
         let messagesWrapper = document.getElementById('messagesWrapper');
-
+    
+        // Escape HTML for security
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+    
+        // Smooth scroll to bottom
+        function scrollToBottom() {
+            if (messagesWrapper) {
+                messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
+            }
+        }
+    
         // Initial scroll positioning
-        if (messagesWrapper){
+        if (messagesWrapper) {
             const hasMessages = messagesWrapper.querySelector('.message');
             messagesWrapper.scrollTop = hasMessages ? messagesWrapper.scrollHeight : 0;
         }
-
-        function toggleAccordion(header){
+    
+        function toggleAccordion(header) {
             const content = header.nextElementSibling;
             const active = header.classList.contains('active');
             // Close others
-            document.querySelectorAll('.accordion-header').forEach(h=>{
+            document.querySelectorAll('.accordion-header').forEach(h => {
                 h.classList.remove('active');
                 if (h.nextElementSibling) h.nextElementSibling.classList.remove('active');
             });
-            if (!active){ header.classList.add('active'); content.classList.add('active'); }
+            if (!active) { 
+                header.classList.add('active'); 
+                content.classList.add('active'); 
+            }
         }
-
+    
         // Compact/expand controls
         const featuresAccordion = document.getElementById('featuresAccordion');
         const compactToggle = document.getElementById('compactToggle');
         const expandAllBtn = document.getElementById('expandAll');
         const collapseAllBtn = document.getElementById('collapseAll');
-
-        if (compactToggle){
-            compactToggle.addEventListener('click', ()=>{
+    
+        if (compactToggle) {
+            compactToggle.addEventListener('click', () => {
                 featuresAccordion.classList.toggle('compact');
             });
         }
-        if (expandAllBtn){
-            expandAllBtn.addEventListener('click', ()=>{
-                document.querySelectorAll('.accordion-header').forEach(h=>{
+        if (expandAllBtn) {
+            expandAllBtn.addEventListener('click', () => {
+                document.querySelectorAll('.accordion-header').forEach(h => {
                     h.classList.add('active');
                     if (h.nextElementSibling) h.nextElementSibling.classList.add('active');
                 });
             });
         }
-        if (collapseAllBtn){
-            collapseAllBtn.addEventListener('click', ()=>{
-                document.querySelectorAll('.accordion-header').forEach(h=>{
+        if (collapseAllBtn) {
+            collapseAllBtn.addEventListener('click', () => {
+                document.querySelectorAll('.accordion-header').forEach(h => {
                     h.classList.remove('active');
                     if (h.nextElementSibling) h.nextElementSibling.classList.remove('active');
                 });
             });
         }
-
+    
         // Quick command chips
         const quick = document.getElementById('quickCommands');
         const textForm = document.getElementById('textForm');
         const sendBtn = document.getElementById('sendBtn');
-        if (quick && textForm){
-            quick.addEventListener('click', (e)=>{
+        
+        if (quick && textForm) {
+            quick.addEventListener('click', (e) => {
                 const b = e.target.closest('button[data-fill]');
                 if (!b) return;
                 const input = textForm.querySelector('input[name="prompt"]');
-                if (input){ input.value = b.dataset.fill; input.focus(); }
+                if (input) { 
+                    input.value = b.dataset.fill; 
+                    input.focus(); 
+                }
             });
         }
-
-        // Thinking helpers
-        const thinkingRow = document.getElementById('thinkingRow');
-        function showThinking(){ if (thinkingRow) thinkingRow.style.display='flex'; insertTypingBubble(); }
-        function hideThinking(){ if (thinkingRow) thinkingRow.style.display='none'; removeTypingBubble(); }
-        function insertTypingBubble(){
-            if (!messagesWrapper) return;
-            if (messagesWrapper.querySelector('.message-assistant.typing')) return;
-            const wrap = document.createElement('div');
-            wrap.className='message message-assistant typing';
-            wrap.innerHTML='<div class="message-label">AI Assistant</div><div class="message-bubble"><span class="typing-dots"><span></span><span></span><span></span></span></div>';
-            messagesWrapper.appendChild(wrap);
-            messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
-        }
-        function removeTypingBubble(){
-            const t = document.querySelector('.message-assistant.typing');
-            if (t) t.remove();
-        }
-
-        // Partial POST update (swap #messagesWrapper only)
-        async function submitWithFetch(form, onFinally){
-            const url = window.location.href;
-            const formData = new FormData(form);
-            try{
-                const res = await fetch(url, { method:'POST', body:formData, headers:{'X-Requested-With':'fetch'}, credentials:'same-origin' });
-                const html = await res.text();
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const newMessages = doc.querySelector('#messagesWrapper');
-                if (newMessages){
-                    messagesWrapper.replaceWith(newMessages);
-                    messagesWrapper = document.getElementById('messagesWrapper');
-                    messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
-                } else {
-                    window.location.reload();
-                }
-            } catch(e){
-                form.submit(); // graceful fallback
-            } finally {
-                if (onFinally) onFinally();
+    
+        // Hide welcome state if there are messages
+        function hideWelcomeState() {
+            const welcomeState = document.querySelector('.welcome-state');
+            if (welcomeState) {
+                welcomeState.style.display = 'none';
             }
         }
-
-        if (textForm){
-            textForm.addEventListener('submit', function(e){
-                const input = this.querySelector('input[name="prompt"]');
-                if (!input.value.trim()){ e.preventDefault(); return; }
+    
+        // Main form submission with immediate feedback
+        if (textForm) {
+            textForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                
+                const input = textForm.querySelector('input[name="prompt"]');
+                const userMessage = input.value.trim();
+                if (!userMessage) return;
+    
+                // Hide welcome state on first message
+                hideWelcomeState();
+    
+                // Disable send button
                 sendBtn.disabled = true;
-                showThinking();
-                submitWithFetch(this, ()=>{
-                    hideThinking();
+    
+                // Append user message immediately
+                const userMsgHtml = `
+                    <div class="message message-user">
+                        <div class="message-label">You</div>
+                        <div class="message-bubble">${escapeHtml(userMessage)}</div>
+                    </div>
+                `;
+                messagesWrapper.insertAdjacentHTML('beforeend', userMsgHtml);
+                scrollToBottom();
+    
+                // Clear input & show typing indicator
+                input.value = '';
+                const thinkingRow = document.getElementById('thinkingRow');
+                if (thinkingRow) thinkingRow.style.display = 'flex';
+                
+                const typingHtml = `
+                    <div class="message message-assistant typing">
+                        <div class="message-label">AI Assistant</div>
+                        <div class="message-bubble">
+                            <span class="typing-dots">
+                                <span></span><span></span><span></span>
+                            </span>
+                        </div>
+                    </div>
+                `;
+                messagesWrapper.insertAdjacentHTML('beforeend', typingHtml);
+                scrollToBottom();
+    
+                // Send fetch request
+                const formData = new FormData(textForm);
+                formData.set('prompt', userMessage); // Ensure the message is in formData
+                
+                try {
+                    const res = await fetch(window.location.href, { 
+                        method: 'POST', 
+                        body: formData,
+                        headers: { 'X-Requested-With': 'fetch' },
+                        credentials: 'same-origin'
+                    });
+                    const html = await res.text();
+                    
+                    // Parse response and replace entire messages wrapper content
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newMessagesWrapper = doc.querySelector('#messagesWrapper');
+                    
+                    if (newMessagesWrapper) {
+                        messagesWrapper.innerHTML = newMessagesWrapper.innerHTML;
+                        messagesWrapper = document.getElementById('messagesWrapper'); // Re-get reference
+                        scrollToBottom();
+                    } else {
+                        // Fallback: reload if structure changed
+                        window.location.reload();
+                    }
+                } catch (err) {
+                    console.error('Error submitting message:', err);
+                    // Remove typing indicator and show error
+                    const typingMsg = messagesWrapper.querySelector('.message-assistant.typing');
+                    if (typingMsg) typingMsg.remove();
+                    
+                    const errorHtml = `
+                        <div class="message message-assistant">
+                            <div class="message-label">AI Assistant</div>
+                            <div class="message-bubble">❌ Sorry, an error occurred. Please try again.</div>
+                        </div>
+                    `;
+                    messagesWrapper.insertAdjacentHTML('beforeend', errorHtml);
+                    scrollToBottom();
+                } finally {
+                    // Re-enable send button and hide thinking row
                     sendBtn.disabled = false;
-                    input.value = '';
+                    if (thinkingRow) thinkingRow.style.display = 'none';
                     input.focus();
-                });
+                }
             });
         }
-
-        // Upload handling (AJAX)
+    
+        // Upload handling
         const fileZone = document.getElementById('fileUploadZone');
         const fileInput = document.getElementById('resume_file');
         const uploadText = document.getElementById('uploadText');
         const uploadSubtext = document.getElementById('uploadSubtext');
-
-        function preventDefaults(e){ e.preventDefault(); e.stopPropagation(); }
-        if (fileZone){
-            ['dragenter','dragover','dragleave','drop'].forEach(evt=>fileZone.addEventListener(evt, preventDefaults));
-            ['dragenter','dragover'].forEach(evt=>fileZone.addEventListener(evt, ()=>fileZone.classList.add('dragover')));
-            ['dragleave','drop'].forEach(evt=>fileZone.addEventListener(evt, ()=>fileZone.classList.remove('dragover')));
-            fileZone.addEventListener('drop', e=>{
+        const fileForm = document.getElementById('fileForm');
+    
+        function preventDefaults(e) { 
+            e.preventDefault(); 
+            e.stopPropagation(); 
+        }
+    
+        if (fileZone) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => 
+                fileZone.addEventListener(evt, preventDefaults)
+            );
+            ['dragenter', 'dragover'].forEach(evt => 
+                fileZone.addEventListener(evt, () => fileZone.classList.add('dragover'))
+            );
+            ['dragleave', 'drop'].forEach(evt => 
+                fileZone.addEventListener(evt, () => fileZone.classList.remove('dragover'))
+            );
+            fileZone.addEventListener('drop', e => {
                 const files = e.dataTransfer.files;
-                if (files.length>0){ fileInput.files = files; startFileUpload(); }
+                if (files.length > 0) { 
+                    fileInput.files = files; 
+                    startFileUpload(); 
+                }
             });
         }
-        if (fileInput){ fileInput.addEventListener('change', startFileUpload); }
-
-        function startFileUpload(){
+    
+        if (fileInput) { 
+            fileInput.addEventListener('change', startFileUpload); 
+        }
+    
+        async function startFileUpload() {
             const f = fileInput.files && fileInput.files[0];
             if (!f) return;
+    
+            // Hide welcome state
+            hideWelcomeState();
+    
+            // Update UI
             fileZone.classList.add('file-selected');
             if (uploadText) uploadText.textContent = f.name;
             if (uploadSubtext) uploadSubtext.textContent = 'Parsing and creating contact...';
-            showThinking();
-            submitWithFetch(document.getElementById('fileForm'), ()=>{
-                hideThinking();
+    
+            // Add user message about file upload
+            const uploadMsgHtml = `
+                <div class="message message-user">
+                    <div class="message-label">You</div>
+                    <div class="message-bubble">📎 Uploaded: ${escapeHtml(f.name)}</div>
+                </div>
+            `;
+            messagesWrapper.insertAdjacentHTML('beforeend', uploadMsgHtml);
+            scrollToBottom();
+    
+            // Show thinking indicator
+            const thinkingRow = document.getElementById('thinkingRow');
+            if (thinkingRow) thinkingRow.style.display = 'flex';
+            
+            const typingHtml = `
+                <div class="message message-assistant typing">
+                    <div class="message-label">AI Assistant</div>
+                    <div class="message-bubble">
+                        <span class="typing-dots">
+                            <span></span><span></span><span></span>
+                        </span>
+                    </div>
+                </div>
+            `;
+            messagesWrapper.insertAdjacentHTML('beforeend', typingHtml);
+            scrollToBottom();
+    
+            // Submit file
+            const formData = new FormData(fileForm);
+            try {
+                const res = await fetch(window.location.href, { 
+                    method: 'POST', 
+                    body: formData,
+                    headers: { 'X-Requested-With': 'fetch' },
+                    credentials: 'same-origin'
+                });
+                const html = await res.text();
+                
+                // Parse and update messages
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newMessagesWrapper = doc.querySelector('#messagesWrapper');
+                
+                if (newMessagesWrapper) {
+                    messagesWrapper.innerHTML = newMessagesWrapper.innerHTML;
+                    messagesWrapper = document.getElementById('messagesWrapper'); // Re-get reference
+                    scrollToBottom();
+                } else {
+                    window.location.reload();
+                }
+            } catch (err) {
+                console.error('Error uploading file:', err);
+                // Remove typing indicator and show error
+                const typingMsg = messagesWrapper.querySelector('.message-assistant.typing');
+                if (typingMsg) typingMsg.remove();
+                
+                const errorHtml = `
+                    <div class="message message-assistant">
+                        <div class="message-label">AI Assistant</div>
+                        <div class="message-bubble">❌ Sorry, file upload failed. Please try again.</div>
+                    </div>
+                `;
+                messagesWrapper.insertAdjacentHTML('beforeend', errorHtml);
+                scrollToBottom();
+            } finally {
+                // Reset upload UI
                 fileInput.value = '';
                 fileZone.classList.remove('file-selected');
                 if (uploadText) uploadText.textContent = 'Drop a resume here or click to browse';
                 if (uploadSubtext) uploadSubtext.textContent = 'PDF, DOC, DOCX, TXT files supported';
-            });
+                if (thinkingRow) thinkingRow.style.display = 'none';
+            }
         }
     </script>
 </body>
