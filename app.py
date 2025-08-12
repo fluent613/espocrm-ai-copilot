@@ -1,6 +1,7 @@
+MODEL_NAME = "gpt-5-mini"
+
 # app.py
 # Main Flask application for EspoCRM AI Copilot
-# Based on working version with minimal changes for open source
 
 from flask import Flask, request, render_template_string, session, redirect, make_response
 from flask_session import Session
@@ -177,7 +178,7 @@ def after_request(response):
 @app.before_request
 def require_auth_token():
     # Skip auth for login page and public routes
-    if request.path in ['/login', '/reset', '/debug', '/test-search', '/test-json-where', '/test-phone']:
+    if request.path in ['/login', '/reset', '/debug', '/test-search', '/test-json-where', '/test-phone', '/test-account-link']:
         return
     
     # Check if user is already authenticated via session
@@ -852,6 +853,62 @@ def handle_function_call(function_name: str, arguments: dict, user_input: str = 
             contact_name_arg = arguments.get("contact_name")
             updates_arg = arguments.get("updates", {})
             
+            # AUTO-DETECT: If updating "company" field, check if it's an actual Account entity
+            if "company" in updates_arg:
+                company_name = updates_arg["company"]
+                logger.info(f"🔍 COMPANY UPDATE: Checking if '{company_name}' is an Account entity")
+                
+                # Search for this company as an Account
+                accounts = crm_manager.search_accounts(company_name)
+                if accounts:
+                    # Found matching account - use account linking instead
+                    account_match = accounts[0]
+                    account_name = account_match.get('name', company_name)
+                    logger.info(f"🔗 AUTO-LINK: Found Account '{account_name}', switching to link_contact_to_account")
+                    
+                    # Remove company from updates and fix field name for any remaining
+                    updates_without_company = {}
+                    for k, v in updates_arg.items():
+                        if k != "company":
+                            # Fix common field name issues
+                            if k == "title":
+                                updates_without_company["cCurrentTitle"] = v
+                            elif k == "skills":
+                                updates_without_company["cSkills"] = v
+                            elif k == "linkedin":
+                                updates_without_company["cLinkedInURL"] = v
+                            else:
+                                updates_without_company[k] = v
+                    
+                    # Link to account
+                    link_result = crm_manager.link_contact_to_account(contact_name_arg, account_name, primary=True)
+                    
+                    # If there are other updates, apply them too
+                    if updates_without_company:
+                        logger.info(f"🔧 ADDITIONAL UPDATES: Applying remaining updates: {updates_without_company}")
+                        update_result = contact_handler.handle_update_contact(
+                            contact_name=contact_name_arg,
+                            updates=updates_without_company
+                        )
+                        return f"{link_result}\n\n{update_result}"
+                    else:
+                        return link_result
+                else:
+                    # No matching account found - treat as company text field with correct field name
+                    logger.info(f"📝 TEXT COMPANY: No Account found for '{company_name}', treating as text field")
+                    updates_arg["cCurrentCompany"] = updates_arg.pop("company")
+            
+            # Fix other common field name issues
+            field_fixes = {
+                "title": "cCurrentTitle",
+                "skills": "cSkills", 
+                "linkedin": "cLinkedInURL"
+            }
+            for old_field, new_field in field_fixes.items():
+                if old_field in updates_arg:
+                    updates_arg[new_field] = updates_arg.pop(old_field)
+                    logger.info(f"🔧 FIELD FIX: Renamed '{old_field}' to '{new_field}'")
+            
             # Auto-inject contact name if missing but mentioned in input
             if not contact_name_arg and user_input:
                 mentioned = extract_contact_from_input(user_input)
@@ -1100,8 +1157,6 @@ def process_with_functions(user_input: str, conversation_history: list) -> str:
             logger.info(f"🎯 AUTO-SWITCHED to: {current_contact['name'] if current_contact else 'None'}")
         
         # STEP 2: Enhanced system prompt with explicit context handling
-        # Replace the system prompt in process_with_functions() with this enhanced version:
-        
         system_prompt = """You are EspoCRM AI Copilot, an intelligent CRM assistant that enhances EspoCRM with AI capabilities.
         
         CRITICAL: DISTINGUISH BETWEEN ADDING NOTES vs CREATING CONTACTS
@@ -1121,6 +1176,23 @@ def process_with_functions(user_input: str, conversation_history: list) -> str:
         - "[NAME]'s [field] is [value]"
         - "update [NAME]:" followed by field updates
         - "change [NAME]'s [field] to [value]"
+        
+        ACCOUNT ASSOCIATION RULES:
+        - When user says "associate [CONTACT] with [ACCOUNT]" or "link [CONTACT] to [ACCOUNT]" → use link_contact_to_account function
+        - When user says "[CONTACT] works at [COMPANY]" → First search if COMPANY exists as Account entity, if yes use link_contact_to_account, else use update_contact with cCurrentCompany
+        - When setting company as text field only → use update_contact with cCurrentCompany field (not "company")
+        - ALWAYS search for the account first before deciding between link_contact_to_account vs update_contact
+
+        CORRECT FIELD NAMES for update_contact:
+        - Company: cCurrentCompany (not "company") 
+        - Current Title: cCurrentTitle (not "title")
+        - Skills: cSkills (not "skills") 
+        - LinkedIn: cLinkedInURL (not "linkedin")
+
+        EXAMPLES:
+        ✅ CORRECT: "associate Jeremy with Eleven" → link_contact_to_account(contact_name="Jeremy Wolfe", account_name="Eleven")
+        ✅ CORRECT: "Jeremy works at Eleven" → search_accounts("Eleven") first, then link_contact_to_account if found
+        ❌ WRONG: "associate Jeremy with Eleven" → update_contact(updates={"company":"Eleven"})
         
         CONTEXT SWITCHING RULES:
         - When user mentions ANY contact name, ALWAYS use that contact explicitly in function calls
@@ -1163,11 +1235,11 @@ def process_with_functions(user_input: str, conversation_history: list) -> str:
         ]
         
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=MODEL_NAME,
             messages=messages,
             tools=simple_functions,
             tool_choice="auto",
-            temperature=0.7,
+            temperature=1,
             timeout=30
         )
         
@@ -1217,9 +1289,9 @@ def process_with_functions(user_input: str, conversation_history: list) -> str:
             
             # Get final response
             final_response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=MODEL_NAME,
                 messages=messages,
-                temperature=0.7,
+                temperature=1,
                 timeout=30
             )
             
@@ -1438,10 +1510,58 @@ def debug():
             </form>
         </div>
         
-        <p><a href="/">🏠 Main App</a> | <a href="/logout">🚪 Logout</a> | <a href="/reset">🔄 Reset</a></p>
+        <p><a href="/">🏠 Main App</a> | <a href="/logout">🚪 Logout</a> | <a href="/reset">🔄 Reset</a> | <a href="/test-account-link">🔗 Test Account Linking</a></p>
     </body>
     </html>
     '''
+
+@app.route('/test-account-link')
+def test_account_link():
+    """Test account linking functionality"""
+    try:
+        # Test 1: Search for Jeremy
+        jeremy_contacts = crm_manager.search_contacts_simple("Jeremy Wolfe")
+        jeremy_result = f"Jeremy search: {len(jeremy_contacts)} results - {[c.get('name') for c in jeremy_contacts]}" if jeremy_contacts else "Jeremy not found"
+        
+        # Test 2: Search for Eleven account
+        eleven_accounts = crm_manager.search_accounts("Eleven")
+        eleven_result = f"Eleven search: {len(eleven_accounts)} results - {[a.get('name') for a in eleven_accounts]}" if eleven_accounts else "Eleven account not found"
+        
+        # Test 3: Try linking if both exist
+        link_result = "Not attempted - missing entities"
+        if jeremy_contacts and eleven_accounts:
+            link_result = crm_manager.link_contact_to_account("Jeremy Wolfe", "Eleven", primary=True)
+        
+        # Test 4: Check current association
+        current_accounts = "No Jeremy found"
+        if jeremy_contacts:
+            current_accounts = crm_manager.get_contact_accounts("Jeremy Wolfe")
+        
+        return f"""
+        <html>
+        <head><title>Account Linking Test</title></head>
+        <body style="font-family: Arial; margin: 20px;">
+        <h2>🔗 Account Linking Test</h2>
+        <div style="background: #f5f5f5; padding: 15px; margin: 10px 0;">
+            <p><strong>Jeremy Search:</strong> {jeremy_result}</p>
+            <p><strong>Eleven Account Search:</strong> {eleven_result}</p>
+            <p><strong>Link Attempt Result:</strong> {link_result}</p>
+        </div>
+        <hr>
+        <h3>Current Jeremy → Account Associations:</h3>
+        <pre style="background: #eee; padding: 10px;">{current_accounts}</pre>
+        <p><a href="/">🏠 Back to Main</a> | <a href="/debug">🔍 Debug Info</a></p>
+        </body>
+        </html>
+        """
+    except Exception as e:
+        return f"""
+        <html><body>
+        <h2>❌ Test Error</h2>
+        <p>Error: {str(e)}</p>
+        <p><a href="/">Back to Main</a></p>
+        </body></html>
+        """
 
 if __name__ == '__main__':
     print("🚀 Starting EspoCRM AI Copilot")
