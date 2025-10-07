@@ -1,8 +1,8 @@
-MODEL_NAME = "gpt-5-mini"
+MODEL_NAME = "gpt-4o-mini"
 
 # app.py
-# Enhanced Flask application for EspoCRM AI Copilot
-# Robust parsing for any input format
+# AI-First CRM Copilot - Intelligence-driven approach
+# Let AI understand intent, then execute simple clean functions
 
 from flask import Flask, request, render_template_string, session, redirect, make_response
 from flask_session import Session
@@ -33,323 +33,418 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# NEW: UNIVERSAL INPUT PARSER - Handles ANY format
-def parse_any_contact_input(user_input: str) -> dict:
+
+# AI-FIRST PROCESSING - Simple and Intelligent
+def process_user_request(user_input: str, conversation_history: list) -> str:
     """
-    Universal parser that handles ANY contact input format:
-    - Markdown with ** formatting
-    - Pipe-separated data
-    - Copy-pasted LinkedIn profiles
-    - Messy multi-line data
-    - Mixed formats
-    
-    Returns a structured dict ready for contact creation/update
+    Simple flow:
+    1. Ask AI to understand what user wants
+    2. AI returns structured intent
+    3. Execute the intent
     """
-    logger.info(f"🤖 UNIVERSAL PARSER: Processing {len(user_input)} chars")
-    
-    # Initialize result structure
-    result = {
-        'action': None,  # 'create', 'update', or 'add_note'
-        'contact_name': None,
-        'first_name': None,
-        'last_name': None,
-        'fields': {}
-    }
-    
-    # Clean up the input - remove excessive markdown, normalize whitespace
-    clean_input = re.sub(r'\*\*([^*]+)\*\*', r'\1', user_input)  # Remove **
-    clean_input = re.sub(r'\*([^*]+)\*', r'\1', clean_input)      # Remove *
-    clean_input = re.sub(r'\s+', ' ', clean_input)                # Normalize spaces
-    
-    # STEP 1: Detect action and primary name
-    lines = user_input.strip().split('\n')
-    first_line = lines[0].lower() if lines else ""
-    
-    # Detect action
-    if any(word in first_line for word in ['add:', 'create:', 'new contact']):
-        result['action'] = 'create'
-    elif any(word in first_line for word in ['update:', 'edit:', 'modify:']):
-        result['action'] = 'update'
-    elif any(word in first_line for word in ['note:', 'add note:', 'notes:']):
-        result['action'] = 'add_note'
-    else:
-        # Default based on content
-        result['action'] = 'create' if 'create' in user_input.lower() else 'update'
-    
-    # STEP 2: Extract name - Try multiple patterns
-    name = None
-    
-    # Pattern 1: Name after action word (add: **Name** or add: Name)
-    action_patterns = [
-        r'(?:add|create|update|edit):\s*\*?\*?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-        r'(?:add|create|update|edit)\s+\*?\*?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-    ]
-    
-    for pattern in action_patterns:
-        match = re.search(pattern, user_input, re.IGNORECASE)
-        if match:
-            name = match.group(1).strip()
-            break
-    
-    # Pattern 2: First bold name in document
-    if not name:
-        bold_name = re.search(r'\*\*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\*\*', user_input)
-        if bold_name:
-            name = bold_name.group(1).strip()
-    
-    # Pattern 3: Look for "Profile" or "Contact" preceded by a name
-    if not name:
-        profile_pattern = re.search(r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'?s?\s+Profile", user_input, re.IGNORECASE)
-        if profile_pattern:
-            name = profile_pattern.group(1).strip()
-    
-    # Pattern 4: First line that looks like a name
-    if not name:
-        for line in lines[:5]:  # Check first 5 lines
-            clean_line = re.sub(r'[*:\-]', '', line).strip()
-            if re.match(r'^[A-Z][a-z]+\s+[A-Z][a-z]+$', clean_line):
-                name = clean_line
-                break
-    
-    # Split name into first and last
-    if name:
-        name_parts = name.split()
-        result['contact_name'] = name
-        result['first_name'] = name_parts[0] if name_parts else None
-        result['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else None
-        logger.info(f"✅ PARSER: Found name: {name}")
-    
-    # STEP 3: Extract fields using multiple strategies
-    
-    # Email extraction - multiple patterns
-    email_patterns = [
-        r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
-        r'(?:Email|email|E-mail|e-mail)[:\s]*([^\s@]+@[^\s@]+\.[^\s]+)',
-    ]
-    
-    for pattern in email_patterns:
-        match = re.search(pattern, clean_input)
-        if match:
-            email = match.group(0) if '@' in match.group(0) else match.group(1)
-            result['fields']['emailAddress'] = email.strip()
-            logger.info(f"✅ PARSER: Found email: {email}")
-            break
-    
-    # Phone extraction - handle multiple formats
-    phone_patterns = [
-        r'(\+?1?[-.\s]?)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})',
-        r'(?:Phone|phone|Mobile|mobile|Cell|cell)[:\s]*([\d\s\-\(\)\.]+)',
-    ]
-    
-    for pattern in phone_patterns:
-        match = re.search(pattern, clean_input)
-        if match:
-            phone_raw = match.group(0)
-            # Clean and validate
-            digits = re.sub(r'[^\d]', '', phone_raw)
-            if len(digits) >= 10:
-                # Format nicely
-                if len(digits) == 10:
-                    phone_formatted = f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
-                elif len(digits) == 11 and digits[0] == '1':
-                    phone_formatted = f"{digits[1:4]}-{digits[4:7]}-{digits[7:]}"
-                else:
-                    phone_formatted = phone_raw.strip()
-                
-                result['fields']['phoneNumber'] = phone_formatted
-                logger.info(f"✅ PARSER: Found phone: {phone_formatted}")
-                break
-    
-    # LinkedIn extraction
-    linkedin_patterns = [
-        r'linkedin\.com/in/([a-zA-Z0-9\-]+)',
-        r'(?:LinkedIn|linkedin)[:\s]*((?:https?://)?(?:www\.)?linkedin\.com/in/[^\s]+)',
-    ]
-    
-    for pattern in linkedin_patterns:
-        match = re.search(pattern, clean_input, re.IGNORECASE)
-        if match:
-            linkedin_part = match.group(0) if 'linkedin.com' in match.group(0) else f"linkedin.com/in/{match.group(1)}"
-            if not linkedin_part.startswith('http'):
-                linkedin_part = 'https://' + linkedin_part
-            result['fields']['cLinkedInURL'] = linkedin_part
-            logger.info(f"✅ PARSER: Found LinkedIn: {linkedin_part}")
-            break
-    
-    # Website extraction
-    website_patterns = [
-        r'(?:Website|website|Site|site)[:\s]*((?:https?://)?(?:www\.)?[a-zA-Z0-9\-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?)',
-        r'(?<![@])\b(?:https?://)?(?:www\.)?([a-zA-Z0-9\-]+\.(?:com|org|edu|net|io|ai|co|gov)[^\s]*)',
-    ]
-    
-    for pattern in website_patterns:
-        match = re.search(pattern, clean_input)
-        if match:
-            website = match.group(1) if match.lastindex else match.group(0)
-            # Skip if it's linkedin or an email domain
-            if website and 'linkedin' not in website and '@' not in website:
-                if not website.startswith('http'):
-                    website = 'https://' + website
-                result['fields']['website'] = website
-                logger.info(f"✅ PARSER: Found website: {website}")
-                break
-    
-    # Title/Position extraction
-    title_patterns = [
-        r'(?:Title|title|Position|position|Role|role)[:\s]*([^\n]+)',
-        r'(?:^|\n)([A-Z][^:\n]*(?:Manager|Director|President|CEO|CTO|CFO|Engineer|Developer|Analyst|Consultant|Partner|Principal|Lead|Senior|Junior)[^:\n]*)',
-    ]
-    
-    for pattern in title_patterns:
-        match = re.search(pattern, clean_input)
-        if match:
-            title = match.group(1).strip()
-            # Clean up title
-            title = re.sub(r'^[-\s]+|[-\s]+$', '', title)
-            if title and len(title) > 2 and len(title) < 100:
-                result['fields']['cCurrentTitle'] = title
-                logger.info(f"✅ PARSER: Found title: {title}")
-                break
-    
-    # Company extraction
-    company_patterns = [
-        r'(?:Company|company|Organization|organization|Employer|employer)[:\s]*([^\n]+)',
-        r'(?:@|at\s+)([A-Z][a-zA-Z\s&]+(?:Inc|LLC|Corp|Company|Group|Partners|Services|Solutions|Technologies|Enterprises))',
-    ]
-    
-    for pattern in company_patterns:
-        match = re.search(pattern, clean_input)
-        if match:
-            company = match.group(1).strip()
-            company = re.sub(r'^[-\s]+|[-\s]+$', '', company)
-            if company and len(company) > 2:
-                result['fields']['cCurrentCompany'] = company
-                logger.info(f"✅ PARSER: Found company: {company}")
-                break
-    
-    # Skills extraction
-    skills_patterns = [
-        r'(?:Skills|skills|Expertise|expertise)[:\s]*([^\n]+(?:\n[^\n:]+)*)',
-        r'(?:Technologies|technologies|Tools|tools)[:\s]*([^\n]+)',
-    ]
-    
-    for pattern in skills_patterns:
-        match = re.search(pattern, clean_input)
-        if match:
-            skills = match.group(1).strip()
-            # Clean up skills
-            skills = re.sub(r'\s+', ' ', skills)
-            if skills and len(skills) > 5:
-                result['fields']['cSkills'] = skills[:500]  # Limit length
-                logger.info(f"✅ PARSER: Found skills: {skills[:50]}...")
-                break
-    
-    # Address extraction (basic)
-    address_patterns = [
-        r'(?:Address|address|Location|location)[:\s]*([^\n]+)',
-        r'(\d+\s+[A-Z][a-zA-Z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Place|Pl)[^\n]*)',
-    ]
-    
-    for pattern in address_patterns:
-        match = re.search(pattern, clean_input, re.IGNORECASE)
-        if match:
-            address = match.group(1).strip()
-            if address:
-                # Try to parse city, state, zip
-                city_state_zip = re.search(r'([A-Z][a-zA-Z\s]+),\s*([A-Z]{2})\s*(\d{5})?', address)
-                if city_state_zip:
-                    result['fields']['addressCity'] = city_state_zip.group(1).strip()
-                    result['fields']['addressState'] = city_state_zip.group(2).strip()
-                    if city_state_zip.group(3):
-                        result['fields']['addressPostalCode'] = city_state_zip.group(3).strip()
-                else:
-                    result['fields']['addressStreet'] = address
-                logger.info(f"✅ PARSER: Found address: {address}")
-                break
-    
-    # Birthday extraction
-    birthday_patterns = [
-        r'(?:Birthday|birthday|Born|born|DOB|Birthdate)[:\s]*([A-Z][a-z]+\s+\d{1,2}(?:,?\s+\d{4})?)',
-        r'(?:Birthday|birthday)[:\s]*(\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)',
-    ]
-    
-    for pattern in birthday_patterns:
-        match = re.search(pattern, clean_input, re.IGNORECASE)
-        if match:
-            birthday = match.group(1).strip()
-            result['fields']['birthday'] = birthday
-            logger.info(f"✅ PARSER: Found birthday: {birthday}")
-            break
-    
-    # Connected date (for LinkedIn connections)
-    connected_pattern = re.search(r'(?:Connected|connected)[:\s]*([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})', clean_input)
-    if connected_pattern:
-        result['fields']['connected_date'] = connected_pattern.group(1).strip()
-    
-    logger.info(f"✅ PARSER: Final result - Action: {result['action']}, Name: {result['contact_name']}, Fields: {list(result['fields'].keys())}")
-    return result
-
-
-# NEW: ENHANCED CONTEXT SWITCHING FUNCTIONS
-def extract_contact_from_input(user_input: str) -> str:
-    """Extract contact name from any user input - handles all patterns"""
-    
-    # Use the universal parser to extract name
-    parsed = parse_any_contact_input(user_input)
-    return parsed.get('contact_name')
-
-
-def switch_context_if_mentioned(user_input: str, crm_manager) -> bool:
-    """Automatically switch context if a contact is mentioned in input"""
-    
-    mentioned_contact = extract_contact_from_input(user_input)
-    if not mentioned_contact:
-        return False
-    
-    logger.info(f"🔄 CONTEXT SWITCH: Detected contact mention '{mentioned_contact}'")
-    
-    # Search for the contact
-    contacts = crm_manager.search_contacts_simple(mentioned_contact)
-    if not contacts:
-        logger.info(f"🔄 CONTEXT SWITCH: Contact '{mentioned_contact}' not found")
-        return False
-    
-    # Find best match
-    best_match = contacts[0]
-    for contact in contacts:
-        contact_name = contact.get('name', '').strip()
-        # Exact match
-        if mentioned_contact.lower() == contact_name.lower():
-            best_match = contact
-            break
-        # Partial match (first name or last name)
-        elif mentioned_contact.lower() in contact_name.lower():
-            best_match = contact
-            break
-    
-    # Switch context
-    contact_id = best_match['id']
-    contact_name = best_match.get('name', mentioned_contact)
-    set_last_contact(contact_id, contact_name)
-    
-    logger.info(f"✅ CONTEXT SWITCH: Switched to {contact_name} (ID: {contact_id})")
-    return True
-
-
-def create_user_friendly_error_message(error: Exception, user_input: str) -> str:
-    """Create user-friendly error messages"""
-    error_str = str(error).lower()
-    
-    if 'timeout' in error_str:
-        # Check if operation likely succeeded
-        if any(word in user_input.lower() for word in ['add', 'create', 'new']):
-            parsed = parse_any_contact_input(user_input)
-            contact_name = parsed.get('contact_name', 'the contact')
-            return f"✅ Processing completed (took a bit long). {contact_name} should be in your CRM now.\n\nIf you don't see them, try searching for their name."
+    try:
+        # Get last contact context for AI
+        last_contact = get_last_contact()
+        context_info = ""
+        if last_contact:
+            context_info = f"\n\nCurrent contact context: {last_contact['name']} (ID: {last_contact['id']})"
         
-        return "⌛ The operation is taking longer than expected. It may have completed - please check your CRM."
-    
-    return f"⚠️ An issue occurred: {str(error)[:100]}...\n\nThe operation may have completed - please check your CRM."
+        # Enhanced system prompt - AI does the heavy lifting
+        system_prompt = f"""You are an intelligent CRM assistant. Your job is to understand what the user wants and call the appropriate function.
+
+CURRENT CONTEXT:{context_info}
+
+IMPORTANT RULES:
+1. If a contact was just discussed and user gives an update command without a name, use that contact (don't require contact_name parameter)
+2. For phone updates: extract the phone number and pass it as phoneNumber - the system will format it correctly
+3. For creating contacts: extract all relevant fields from any format (LinkedIn profiles, resumes, casual text, etc.)
+4. Always use available context intelligently
+5. When user is frustrated, check conversation history to understand what they want and help them
+
+AVAILABLE FUNCTIONS:
+- search_contacts: Find contacts by any criteria
+- get_contact_details: Get full details of a contact
+- create_contact: Create a new contact with firstName, lastName, and optional fields (emailAddress, phoneNumber, cCurrentTitle, cCurrentCompany, cLinkedInURL, cSkills, etc.)
+- update_contact: Update a contact (contact_name optional if in context, updates dict required)
+- add_note: Add a note to a contact (contact_name optional if in context)
+- get_contact_notes: Get all notes for a contact
+- parse_resume: Parse resume text and create/update contact
+- list_all_contacts: List contacts
+
+EXAMPLES OF SMART CONTEXT USE:
+User: "find john smith"
+You: Call search_contacts with "john smith"
+
+User: "phone: 555-1234" (after searching for John)
+You: Call update_contact with updates={{"phoneNumber": "555-1234"}} - NO contact_name needed since John is in context
+
+User: "add note: called, left voicemail" (after searching for John)
+You: Call add_note with note_content="called, left voicemail" - NO contact_name needed
+
+User: "update his email to john@acme.com" (after searching for John)
+You: Call update_contact with updates={{"emailAddress": "john@acme.com"}}
+
+User: "I just told you his phone number is 555-1234" (after mentioning a phone)
+You: Look at conversation history, extract the phone number mentioned, call update_contact
+
+User: "create contact Jane Doe, email jane@example.com, phone 555-9999"
+You: Call create_contact with all the extracted data
+
+User pastes LinkedIn profile data:
+You: Extract firstName, lastName, emailAddress, cLinkedInURL, cCurrentTitle, cCurrentCompany, etc. and call create_contact
+
+Be smart. Use context. Don't over-complicate. When in doubt, try to help."""
+
+        # Build messages for AI
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+        
+        # Add recent conversation history for context (last 6 messages)
+        messages.extend(conversation_history[-6:])
+        
+        # Add current user input
+        messages.append({"role": "user", "content": user_input})
+        
+        logger.info(f"🤖 AI PROCESSING: {user_input[:100]}...")
+        
+        # Let AI figure out what to do
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            tools=simple_functions,
+            tool_choice="auto",
+            temperature=0.7,  # Slightly lower for more consistent behavior
+            timeout=20
+        )
+        
+        message = response.choices[0].message
+        
+        # If AI wants to call a function, do it
+        if message.tool_calls:
+            results = []
+            
+            for tool_call in message.tool_calls:
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+                
+                logger.info(f"📞 AI CALLED: {function_name}")
+                logger.info(f"📋 ARGS: {function_args}")
+                
+                # Execute the function
+                result = handle_function_call(function_name, function_args, user_input)
+                results.append(result)
+            
+            # Return the results
+            return "\n\n".join(results)
+        
+        # If AI just wants to respond with text (for clarifications)
+        if message.content:
+            return message.content
+        
+        # Fallback
+        return "I understood your request but couldn't determine how to help. Could you rephrase?"
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing request: {e}")
+        return f"⚠️ Something went wrong: {str(e)}\n\nPlease try rephrasing your request."
+
+
+def handle_function_call(function_name: str, arguments: dict, user_input: str = "") -> str:
+    """
+    Simplified function handler - just executes what AI decided
+    """
+    try:
+        logger.info(f"⚡ EXECUTING: {function_name} with {arguments}")
+        
+        if function_name == "search_contacts":
+            criteria = arguments.get("criteria", "")
+            contacts = crm_manager.search_contacts_simple(criteria)
+            
+            if not contacts:
+                return f"❌ No contacts found matching '{criteria}'"
+            
+            # Set context to best match
+            best_match = contacts[0]
+            set_last_contact(best_match['id'], best_match.get('name', 'Unknown'))
+            
+            # Format results
+            result = f"**Found {len(contacts)} contact(s):**\n\n"
+            for i, contact in enumerate(contacts[:5], 1):
+                name = contact.get('name', 'Unknown')
+                result += f"{i}. **{name}**\n"
+                if contact.get('emailAddress'):
+                    result += f"   📧 {contact['emailAddress']}\n"
+                if contact.get('cCurrentTitle'):
+                    result += f"   💼 {contact['cCurrentTitle']}\n"
+                if contact.get('cCurrentCompany'):
+                    result += f"   🏢 {contact['cCurrentCompany']}\n"
+                result += "\n"
+            
+            return result
+            
+        elif function_name == "update_contact":
+            updates = arguments.get("updates", {})
+            contact_name = arguments.get("contact_name")
+            
+            # If no contact_name provided, use context
+            if not contact_name:
+                last_contact = get_last_contact()
+                if not last_contact:
+                    return "❌ No contact in context. Please search for a contact first."
+                contact_id = last_contact['id']
+                contact_name = last_contact['name']
+            else:
+                # Find the contact
+                contacts = crm_manager.search_contacts_simple(contact_name)
+                if not contacts:
+                    return f"❌ Contact '{contact_name}' not found"
+                contact_id = contacts[0]['id']
+                contact_name = contacts[0].get('name', contact_name)
+                set_last_contact(contact_id, contact_name)
+            
+            # Handle phone number specially - convert to phoneNumberData
+            if 'phoneNumber' in updates:
+                phone_value = updates['phoneNumber']
+                phone_data = create_phone_number_data(phone_value, "Mobile", True)
+                if phone_data:
+                    updates['phoneNumberData'] = phone_data
+                    del updates['phoneNumber']
+                else:
+                    return f"❌ Invalid phone number format: {phone_value}"
+            
+            # Clean updates
+            clean_updates = {k: v for k, v in updates.items() if v is not None and str(v).strip() != ""}
+            
+            if not clean_updates:
+                return f"No valid updates provided for {contact_name}"
+            
+            # Execute update
+            success, error_msg = crm_manager.update_contact_simple(contact_id, clean_updates)
+            
+            if success:
+                # Show what was updated
+                updated_items = []
+                for key, value in clean_updates.items():
+                    if key == 'phoneNumberData' and isinstance(value, list) and len(value) > 0:
+                        phone_num = value[0].get('phoneNumber', '')
+                        updated_items.append(f"📞 Phone: {phone_num}")
+                    elif key == 'emailAddress':
+                        updated_items.append(f"📧 Email: {value}")
+                    elif key == 'cCurrentTitle':
+                        updated_items.append(f"💼 Title: {value}")
+                    elif key == 'cCurrentCompany':
+                        updated_items.append(f"🏢 Company: {value}")
+                    elif key == 'cLinkedInURL':
+                        updated_items.append(f"🔗 LinkedIn: {value}")
+                    else:
+                        updated_items.append(f"{key}: {value}")
+                
+                result = f"✅ **Updated {contact_name}**"
+                if updated_items:
+                    result += "\n\n" + "\n".join(updated_items)
+                return result
+            else:
+                return f"❌ Failed to update {contact_name}: {error_msg}"
+        
+        elif function_name == "create_contact":
+            # Handle phone number conversion
+            if 'phoneNumber' in arguments and not 'phoneNumberData' in arguments:
+                phone_value = arguments['phoneNumber']
+                phone_data = create_phone_number_data(phone_value, "Mobile", True)
+                if phone_data:
+                    arguments['phoneNumberData'] = phone_data
+                del arguments['phoneNumber']
+            
+            # Try to create the contact
+            result_msg, contact_id = crm_manager.create_contact(**arguments)
+            
+            # Check if it's a conflict (already exists)
+            if "already exists" in result_msg or contact_id is None:
+                # Contact might already exist - try to find and update instead
+                name = f"{arguments.get('firstName', '')} {arguments.get('lastName', '')}".strip()
+                email = arguments.get('emailAddress')
+                
+                logger.info(f"🔍 Contact creation conflict - searching for existing contact: {name}")
+                
+                # Search by name first
+                existing = crm_manager.search_contacts_simple(name)
+                
+                # If no match by name, try email
+                if not existing and email:
+                    existing = crm_manager.search_contacts_simple(email)
+                
+                if existing:
+                    # Found existing contact - offer to update
+                    contact_id = existing[0]['id']
+                    contact_name = existing[0].get('name', name)
+                    set_last_contact(contact_id, contact_name)
+                    
+                    # Prepare update data (exclude name fields to avoid conflicts)
+                    # IMPORTANT: Include ALL fields including skills, title, company, etc.
+                    update_data = {}
+                    for key, value in arguments.items():
+                        if key not in ['firstName', 'lastName'] and value and str(value).strip():
+                            update_data[key] = value
+                            logger.info(f"📝 Will update {key}: {value}")
+                    
+                    if update_data:
+                        logger.info(f"🔄 Updating existing contact {contact_name} with: {list(update_data.keys())}")
+                        
+                        # Update the existing contact
+                        success, error_msg = crm_manager.update_contact_simple(contact_id, update_data)
+                        
+                        if success:
+                            # Get updated details to show what changed
+                            details = crm_manager.get_contact_details(contact_id)
+                            
+                            # Build list of what was updated
+                            updated_fields = []
+                            for key, value in update_data.items():
+                                if key == 'phoneNumberData' and isinstance(value, list) and len(value) > 0:
+                                    updated_fields.append(f"📞 Phone: {value[0].get('phoneNumber', '')}")
+                                elif key == 'emailAddress':
+                                    updated_fields.append(f"📧 Email: {value}")
+                                elif key == 'cCurrentTitle':
+                                    updated_fields.append(f"💼 Title: {value}")
+                                elif key == 'cCurrentCompany':
+                                    updated_fields.append(f"🏢 Company: {value}")
+                                elif key == 'cSkills':
+                                    updated_fields.append(f"🎯 Skills: {value}")
+                                elif key == 'cLinkedInURL':
+                                    updated_fields.append(f"🔗 LinkedIn: {value}")
+                                else:
+                                    updated_fields.append(f"• {key}: {value}")
+                            
+                            result = f"ℹ️ **Contact already exists: {contact_name}**\n\n✅ **Updated with new information:**\n"
+                            result += "\n".join(updated_fields)
+                            result += f"\n\n**Full details:**\n{details}"
+                            return result
+                        else:
+                            details = crm_manager.get_contact_details(contact_id)
+                            return f"ℹ️ **Contact already exists: {contact_name}**\n\n⚠️ Update failed: {error_msg}\n\n**Current details:**\n{details}"
+                    else:
+                        details = crm_manager.get_contact_details(contact_id)
+                        return f"ℹ️ **Contact already exists: {contact_name}**\n\nNo new information to add.\n\n**Current details:**\n{details}"
+                else:
+                    # Couldn't find existing contact, return original error
+                    return result_msg
+            else:
+                # Success - set context
+                if contact_id:
+                    name = f"{arguments.get('firstName', '')} {arguments.get('lastName', '')}".strip()
+                    set_last_contact(contact_id, name)
+                return result_msg
+            
+        elif function_name == "get_contact_details":
+            contact_name = arguments.get("contact_name")
+            contacts = crm_manager.search_contacts_simple(contact_name)
+            if not contacts:
+                return f"❌ Contact '{contact_name}' not found"
+            contact_id = contacts[0]['id']
+            set_last_contact(contact_id, contacts[0].get('name', contact_name))
+            return crm_manager.get_contact_details(contact_id)
+            
+        elif function_name == "add_note":
+            note_content = arguments.get("note_content")
+            contact_name = arguments.get("contact_name")
+            
+            # Use context if no name provided
+            if not contact_name:
+                last_contact = get_last_contact()
+                if not last_contact:
+                    return "❌ No contact in context"
+                contact_id = last_contact['id']
+                contact_name = last_contact['name']
+            else:
+                contacts = crm_manager.search_contacts_simple(contact_name)
+                if not contacts:
+                    return f"❌ Contact '{contact_name}' not found"
+                contact_id = contacts[0]['id']
+                contact_name = contacts[0].get('name', contact_name)
+                set_last_contact(contact_id, contact_name)
+            
+            result = crm_manager.add_note(contact_id, note_content)
+            return result.replace("contact", f"**{contact_name}**")
+            
+        elif function_name == "get_contact_notes":
+            contact_name = arguments.get("contact_name")
+            contacts = crm_manager.search_contacts_simple(contact_name)
+            if not contacts:
+                return f"❌ Contact '{contact_name}' not found"
+            return crm_manager.get_contact_notes(contacts[0]['id'])
+            
+        elif function_name == "parse_resume":
+            resume_text = arguments.get("resume_text")
+            
+            # Use AI to extract structured data from resume
+            logger.info("📄 Parsing resume with AI")
+            
+            extraction_prompt = f"""Extract contact information from this resume and return a structured response.
+
+Resume content:
+{resume_text[:3000]}
+
+IMPORTANT - Extract ALL of these fields if present:
+- firstName (required)
+- lastName (required)
+- emailAddress
+- phoneNumber (any format)
+- cCurrentTitle (most recent job title)
+- cCurrentCompany (most recent/current company)
+- cLinkedInURL (LinkedIn profile URL)
+- cSkills (IMPORTANT: extract ALL skills, technologies, tools, languages mentioned - be comprehensive, comma-separated list)
+- addressCity, addressState, addressPostalCode, addressCountry
+
+For skills, include:
+- Programming languages
+- Frameworks and libraries
+- Tools and platforms
+- Soft skills
+- Domain expertise
+- Certifications
+
+Return the data as if you're calling create_contact function."""
+
+            try:
+                extract_response = client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=[
+                        {"role": "system", "content": "You are a resume parser. Extract contact information and call create_contact."},
+                        {"role": "user", "content": extraction_prompt}
+                    ],
+                    tools=[simple_functions[1]],  # Just the create_contact function
+                    tool_choice={"type": "function", "function": {"name": "create_contact"}},
+                    temperature=0.3,
+                    timeout=15
+                )
+                
+                extract_message = extract_response.choices[0].message
+                
+                if extract_message.tool_calls:
+                    tool_call = extract_message.tool_calls[0]
+                    contact_data = json.loads(tool_call.function.arguments)
+                    
+                    logger.info(f"📋 Extracted contact data: {contact_data}")
+                    
+                    # Create the contact
+                    return handle_function_call("create_contact", contact_data, resume_text)
+                else:
+                    return "❌ Could not extract contact information from resume"
+                    
+            except Exception as e:
+                logger.error(f"Resume parsing error: {e}")
+                return f"❌ Error parsing resume: {str(e)}"
+            
+        elif function_name == "list_all_contacts":
+            return crm_manager.list_all_contacts(arguments.get("limit", 20))
+        
+        else:
+            return f"❌ Unknown function: {function_name}"
+            
+    except Exception as e:
+        logger.error(f"❌ Function execution error: {e}")
+        return f"⚠️ Error executing {function_name}: {str(e)}"
 
 
 # Session management for calendar user context
@@ -425,7 +520,7 @@ def after_request(response):
 # Authentication
 @app.before_request
 def require_auth_token():
-    if request.path in ['/login', '/reset', '/debug', '/test-search', '/test-json-where', '/test-phone', '/test-account-link']:
+    if request.path in ['/login', '/reset', '/debug']:
         return
     
     if session.get('authenticated'):
@@ -472,20 +567,7 @@ simple_functions = [
                     "firstName": {"type": "string"},
                     "lastName": {"type": "string"},
                     "emailAddress": {"type": "string"},
-                    "phoneNumberData": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "phoneNumber": {"type": "string"},
-                                "type": {"type": "string", "enum": ["Mobile", "Work", "Home", "Main", "Other"]},
-                                "primary": {"type": "boolean"},
-                                "optOut": {"type": "boolean"},
-                                "invalid": {"type": "boolean"}
-                            },
-                            "required": ["phoneNumber", "type"]
-                        }
-                    },
+                    "phoneNumber": {"type": "string", "description": "Phone number in any format - will be converted automatically"},
                     "cCurrentTitle": {"type": "string"},
                     "cSkills": {"type": "string"},
                     "cCurrentCompany": {"type": "string"},
@@ -518,12 +600,15 @@ simple_functions = [
         "type": "function",
         "function": {
             "name": "update_contact", 
-            "description": "Update an existing contact's information",
+            "description": "Update an existing contact's information. If a contact was just discussed, contact_name is optional.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "contact_name": {"type": "string", "description": "Name to search for (optional if just discussed a contact)"},
-                    "updates": {"type": "object", "description": "Fields to update"}
+                    "contact_name": {"type": "string", "description": "Name to search for (optional if contact just discussed)"},
+                    "updates": {
+                        "type": "object", 
+                        "description": "Fields to update - can include phoneNumber, emailAddress, cCurrentTitle, cCurrentCompany, cLinkedInURL, etc."
+                    }
                 },
                 "required": ["updates"] 
             }
@@ -533,11 +618,11 @@ simple_functions = [
         "type": "function",
         "function": {
             "name": "add_note",
-            "description": "Add a note to a contact",
+            "description": "Add a note to a contact. If a contact was just discussed, contact_name is optional.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "contact_name": {"type": "string", "description": "Name of contact (optional if just discussed a contact)"},
+                    "contact_name": {"type": "string", "description": "Name of contact (optional if just discussed)"},
                     "note_content": {"type": "string"}
                 },
                 "required": ["note_content"]
@@ -587,392 +672,6 @@ simple_functions = [
     }
 ]
 
-class ContactHandler:
-    """Handler for contact-related operations"""
-    
-    def __init__(self, crm_manager, resume_parser):
-        self.crm = crm_manager
-        self.parser = resume_parser
-    
-    def handle_parse_resume(self, resume_text: str) -> str:
-        """Parse resume using the universal parser"""
-        logger.info("=== RESUME PARSING STARTED ===")
-        
-        # Use universal parser
-        parsed = parse_any_contact_input(resume_text)
-        
-        if not parsed.get('first_name'):
-            # Fall back to original resume parser for PDF/DOCX content
-            person_info = self.parser.extract_resume_info(resume_text)
-            
-            if not person_info.get('firstName'):
-                return "❌ Could not extract name from resume. Please check the format."
-            
-            # Convert to universal parser format
-            parsed = {
-                'first_name': person_info.get('firstName'),
-                'last_name': person_info.get('lastName'),
-                'fields': {}
-            }
-            
-            # Map fields
-            field_mapping = {
-                'emailAddress': 'emailAddress',
-                'phoneNumber': 'phoneNumber',
-                'cCurrentTitle': 'cCurrentTitle',
-                'cSkills': 'cSkills',
-                'cCurrentCompany': 'cCurrentCompany',
-                'cLinkedInURL': 'cLinkedInURL',
-                'addressStreet': 'addressStreet',
-                'addressCity': 'addressCity',
-                'addressState': 'addressState',
-                'addressPostalCode': 'addressPostalCode'
-            }
-            
-            for old_key, new_key in field_mapping.items():
-                if person_info.get(old_key):
-                    parsed['fields'][new_key] = person_info[old_key]
-        
-        # Build contact data
-        contact_data = {
-            'firstName': parsed['first_name'],
-            'lastName': parsed['last_name'] or ''
-        }
-        
-        # Add fields
-        for field, value in parsed['fields'].items():
-            if field == 'phoneNumber' and value:
-                # Convert to phoneNumberData
-                phone_data = create_phone_number_data(value, "Mobile", True)
-                if phone_data:
-                    contact_data['phoneNumberData'] = phone_data
-            else:
-                contact_data[field] = value
-        
-        full_name = f"{contact_data['firstName']} {contact_data['lastName']}".strip()
-        
-        # Check if exists
-        existing_contacts = self.crm.search_contacts_simple(full_name)
-        exact_match = None
-        
-        if existing_contacts:
-            for contact in existing_contacts:
-                if contact.get('name', '').strip().lower() == full_name.lower():
-                    exact_match = contact
-                    break
-        
-        if exact_match:
-            # Update existing
-            contact_id = exact_match['id']
-            success, error_msg = self.crm.update_contact_simple(contact_id, contact_data)
-            if success:
-                result = f"✅ **Updated existing contact: {full_name}**\n\n"
-                set_last_contact(contact_id, full_name)
-            else:
-                result = f"❌ Failed to update contact: {error_msg}\n\n"
-        else:
-            # Create new
-            try:
-                result_msg, contact_id = self.crm.create_contact(**contact_data)
-                result = f"✅ **Created new contact: {full_name}**\n\n"
-                if contact_id:
-                    set_last_contact(contact_id, full_name)
-            except Exception as e:
-                logger.error(f"Contact creation failed: {e}")
-                result = f"❌ Failed to create contact: {str(e)}\n\n"
-        
-        # Show what was extracted
-        result += "**Extracted Information:**\n"
-        for key, value in parsed['fields'].items():
-            if value and key != 'phoneNumber':
-                display_name = {
-                    'emailAddress': 'Email',
-                    'cLinkedInURL': 'LinkedIn',
-                    'cSkills': 'Skills',
-                    'cCurrentTitle': 'Title',
-                    'cCurrentCompany': 'Company'
-                }.get(key, key)
-                result += f"• **{display_name}:** {value}\n"
-        
-        return result
-    
-    def handle_update_contact(self, contact_name: str = None, updates: dict = None) -> str:
-        """Update contact with enhanced error handling"""
-        contact_id = None
-        contact_current_name = None
-        
-        logger.info(f"📝 UPDATE_CONTACT: contact_name='{contact_name}', updates={updates}")
-        
-        if contact_name and contact_name.strip() and contact_name != "USE_CONTEXT":
-            contacts = self.crm.search_contacts_simple(contact_name.strip())
-            if not contacts:
-                return f"❌ Contact '{contact_name}' not found."
-            
-            best_match = contacts[0]
-            for contact in contacts:
-                if contact.get('name', '').lower() == contact_name.strip().lower():
-                    best_match = contact
-                    break
-            
-            contact_id = best_match['id']
-            contact_current_name = best_match.get('name', 'Unknown')
-            set_last_contact(contact_id, contact_current_name)
-        else:
-            last_contact = get_last_contact()
-            if last_contact:
-                contact_id = last_contact['id']
-                contact_current_name = last_contact['name']
-            else:
-                return "❌ No contact specified. Please search for a contact first or provide a contact name."
-        
-        clean_updates = {k: v for k, v in updates.items() if v is not None and v != ""}
-        
-        if not clean_updates:
-            return f"No valid updates provided for {contact_current_name}."
-        
-        success, error_msg = self.crm.update_contact_simple(contact_id, clean_updates)
-        
-        if success:
-            return f"✅ Successfully updated **{contact_current_name}**"
-        else:
-            return f"❌ Failed to update {contact_current_name}: {error_msg}"
-    
-    def handle_add_note(self, contact_name: str = None, note_content: str = None) -> str:
-        """Add note to contact"""
-        contact_id = None
-        actual_contact_name = None
-        
-        if contact_name and contact_name.strip():
-            contacts = self.crm.search_contacts_simple(contact_name.strip())
-            if not contacts:
-                return f"❌ Contact '{contact_name}' not found."
-            
-            best_match = contacts[0]
-            contact_id = best_match['id']
-            actual_contact_name = best_match.get('name', contact_name)
-            set_last_contact(contact_id, actual_contact_name)
-        else:
-            last_contact = get_last_contact()
-            if last_contact:
-                contact_id = last_contact['id']
-                actual_contact_name = last_contact['name']
-            else:
-                return "❌ No contact specified."
-        
-        result = self.crm.add_note(contact_id, note_content)
-        return result.replace("successfully", f"successfully to **{actual_contact_name}**")
-    
-    def handle_get_contact_details(self, contact_name: str) -> str:
-        """Get detailed contact information"""
-        contacts = self.crm.search_contacts_simple(contact_name)
-        
-        if not contacts:
-            return f"Contact '{contact_name}' not found."
-        
-        contact = contacts[0]
-        actual_name = contact.get('name', contact_name)
-        set_last_contact(contact['id'], actual_name)
-        
-        return self.crm.get_contact_details(contact['id'])
-
-# Initialize contact handler
-contact_handler = ContactHandler(crm_manager, resume_parser)
-
-def handle_function_call(function_name: str, arguments: dict, user_input: str = "") -> str:
-    """Enhanced function call handler"""
-    try:
-        logger.info(f"Function: {function_name}, Arguments: {arguments}")
-        
-        if function_name == "search_contacts":
-            criteria = arguments.get("criteria", "")
-            contacts = crm_manager.search_contacts_simple(criteria)
-            
-            if not contacts:
-                return f"No contacts found matching '{criteria}'"
-            
-            # Set context to best match
-            best_match = contacts[0]
-            contact_id = best_match['id']
-            contact_name = best_match.get('name', 'Unknown')
-            set_last_contact(contact_id, contact_name)
-            
-            # Format results
-            result = f"Found {len(contacts)} contact(s) matching '{criteria}':\n\n"
-            for i, contact in enumerate(contacts[:5], 1):
-                name = contact.get('name', 'Unknown')
-                result += f"{i}. **{name}**\n"
-                if contact.get('emailAddress'):
-                    result += f"   Email: {contact['emailAddress']}\n"
-                if contact.get('cCurrentTitle'):
-                    result += f"   Title: {contact['cCurrentTitle']}\n"
-                if contact.get('cCurrentCompany'):
-                    result += f"   Company: {contact['cCurrentCompany']}\n"
-                result += "\n"
-            
-            return result
-            
-        elif function_name == "update_contact":
-            return contact_handler.handle_update_contact(
-                contact_name=arguments.get("contact_name"),
-                updates=arguments.get("updates", {})
-            )
-        
-        elif function_name == "create_contact":
-            result_msg, contact_id = crm_manager.create_contact(**arguments)
-            if contact_id:
-                name = f"{arguments.get('firstName', '')} {arguments.get('lastName', '')}".strip()
-                set_last_contact(contact_id, name)
-            return f"✅ Done! {result_msg}"
-            
-        elif function_name == "get_contact_details":
-            return contact_handler.handle_get_contact_details(arguments.get("contact_name"))
-            
-        elif function_name == "add_note":
-            return contact_handler.handle_add_note(
-                contact_name=arguments.get("contact_name"),
-                note_content=arguments.get("note_content")
-            )
-            
-        elif function_name == "get_contact_notes":
-            contact_name = arguments.get("contact_name")
-            contacts = crm_manager.search_contacts_simple(contact_name)
-            if not contacts:
-                return f"Contact '{contact_name}' not found."
-            contact_id = contacts[0]['id']
-            return crm_manager.get_contact_notes(contact_id)
-            
-        elif function_name == "parse_resume":
-            return contact_handler.handle_parse_resume(arguments.get("resume_text"))
-            
-        elif function_name == "list_all_contacts":
-            return crm_manager.list_all_contacts(arguments.get("limit", 20))
-        
-        else:
-            return f"Unknown function: {function_name}"
-            
-    except Exception as e:
-        logger.error(f"Function call failed: {e}")
-        return f"✅ Operation likely completed. Please check your CRM.\n\n(Technical: {str(e)[:50]}...)"
-
-
-def process_with_functions_robust(user_input: str, conversation_history: list) -> str:
-    """Robust processing with universal parser and enhanced error handling"""
-    try:
-        # STEP 1: Try universal parser first for structured extraction
-        parsed = parse_any_contact_input(user_input)
-        
-        # If we have good structured data, handle directly without GPT
-        if parsed['action'] and parsed['first_name']:
-            logger.info(f"🤖 DIRECT HANDLING: Using parsed data for {parsed['action']}")
-            
-            if parsed['action'] == 'create':
-                # Build arguments for create_contact
-                args = {
-                    'firstName': parsed['first_name'],
-                    'lastName': parsed['last_name'] or ''
-                }
-                
-                # Map fields
-                for field, value in parsed['fields'].items():
-                    if field == 'phoneNumber':
-                        # Convert to phoneNumberData
-                        phone_data = create_phone_number_data(value, "Mobile", True)
-                        if phone_data:
-                            args['phoneNumberData'] = phone_data
-                    else:
-                        args[field] = value
-                
-                # Create directly
-                result = handle_function_call('create_contact', args, user_input)
-                return result
-            
-            elif parsed['action'] == 'update' and parsed['contact_name']:
-                # Update directly
-                result = handle_function_call('update_contact', {
-                    'contact_name': parsed['contact_name'],
-                    'updates': parsed['fields']
-                }, user_input)
-                return result
-        
-        # STEP 2: Fall back to GPT for complex queries or when parsing fails
-        logger.info("🤖 GPT HANDLING: Using AI for complex processing")
-        
-        # Auto-switch context if needed
-        switch_context_if_mentioned(user_input, crm_manager)
-        
-        system_prompt = """You are EspoCRM AI Copilot. When processing contact data:
-        
-        1. Use the structured data that's already been parsed when available
-        2. For create_contact, map fields correctly:
-           - email/Email → emailAddress
-           - phone/Phone → will be converted to phoneNumberData automatically
-           - linkedin/LinkedIn → cLinkedInURL
-           - title/Title → cCurrentTitle
-           - company/Company → cCurrentCompany
-           - skills/Skills → cSkills
-        3. Be concise in responses - just confirm the action taken
-        
-        When data appears pre-parsed like "Create contact: Name, field: value", use it directly."""
-        
-        messages = [
-            {"role": "system", "content": system_prompt},
-        ] + conversation_history[-10:] + [
-            {"role": "user", "content": user_input}
-        ]
-        
-        # Quick timeout for better UX
-        try:
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=messages,
-                tools=simple_functions,
-                tool_choice="auto",
-                temperature=1,
-                timeout=15  # Quick timeout
-            )
-        except Exception as timeout_error:
-            logger.warning(f"GPT timeout, using fallback: {timeout_error}")
-            # Return success message based on what was likely attempted
-            if parsed['contact_name']:
-                return f"✅ Done! {parsed['contact_name']} has been processed.\n\nPlease check your CRM to confirm."
-            return "✅ Operation completed. Please check your CRM."
-        
-        message = response.choices[0].message
-        
-        if message.tool_calls:
-            for tool_call in message.tool_calls:
-                function_name = tool_call.function.name
-                try:
-                    function_args = json.loads(tool_call.function.arguments)
-                    
-                    # Auto-inject parsed data if missing
-                    if function_name == "create_contact" and parsed['first_name']:
-                        function_args['firstName'] = function_args.get('firstName', parsed['first_name'])
-                        function_args['lastName'] = function_args.get('lastName', parsed['last_name'] or '')
-                        # Add any missing fields from parsed data
-                        for field, value in parsed['fields'].items():
-                            if field not in function_args and field != 'phoneNumber':
-                                function_args[field] = value
-                    
-                    result = handle_function_call(function_name, function_args, user_input)
-                    
-                    # Always return success message
-                    if "Successfully" in result or "Created" in result or "Updated" in result:
-                        return f"✅ Done! {result}"
-                    return result
-                    
-                except Exception as e:
-                    logger.error(f"Function error: {e}")
-                    if parsed['contact_name']:
-                        return f"✅ {parsed['contact_name']} has been processed. Please verify in your CRM."
-                    return "✅ Operation completed. Please check your CRM."
-        
-        return message.content or "✅ Done! Please check your CRM."
-        
-    except Exception as e:
-        logger.error(f"Process failed: {e}")
-        return create_user_friendly_error_message(e, user_input)
-
 
 # Routes
 @app.route('/', methods=['GET', 'POST'])
@@ -987,15 +686,13 @@ def index():
     
     if request.method == 'POST':
         user_input = None
-        is_file_upload = False
         
         # Handle file upload
         if 'resume_file' in request.files:
             file = request.files['resume_file']
             
             if file and file.filename:
-                logger.info(f"Processing uploaded file: {file.filename}")
-                is_file_upload = True
+                logger.info(f"📄 Processing uploaded file: {file.filename}")
                 
                 content, error = resume_parser.process_uploaded_file(file)
                 if error:
@@ -1003,7 +700,8 @@ def index():
                 elif not content or len(content.strip()) < 10:
                     output = "❌ No content extracted from file. Please check the file format."
                 else:
-                    user_input = f"Please parse this resume and create/update a contact:\n\n{content}"
+                    # Let AI extract and create contact directly
+                    user_input = f"This is a resume. Extract the contact information and create a new contact:\n\n{content[:4000]}"
             else:
                 output = "❌ No file selected or file is empty."
         else:
@@ -1014,17 +712,12 @@ def index():
                 # Add to history
                 session['conversation_history'].append({"role": "user", "content": user_input})
                 
-                # Use robust processing for everything
-                output = process_with_functions_robust(user_input, session['conversation_history'])
+                # Process with AI-first approach
+                output = process_user_request(user_input, session['conversation_history'])
                 
                 # Ensure we always have output
                 if not output or output.strip() == "":
-                    # Check what was likely attempted
-                    parsed = parse_any_contact_input(user_input)
-                    if parsed['contact_name']:
-                        output = f"✅ Done! {parsed['contact_name']} has been processed."
-                    else:
-                        output = "✅ Operation completed. Please check your CRM."
+                    output = "✅ Operation completed. Please check your CRM."
                 
                 # Add to history
                 session['conversation_history'].append({"role": "assistant", "content": output})
@@ -1037,7 +730,7 @@ def index():
                 
             except Exception as e:
                 logger.error(f"Request processing failed: {e}")
-                output = create_user_friendly_error_message(e, user_input)
+                output = f"⚠️ Something went wrong: {str(e)}\n\nPlease try again."
                 session['conversation_history'].append({"role": "assistant", "content": output})
                 session.modified = True
     
@@ -1108,41 +801,13 @@ def reset():
 
 @app.route('/debug')
 def debug():
-    """Debug endpoint with parser test"""
-    test_input = """add: **Douglas Jarnot**
-Contact Info
-**Douglas' Profile**
-**linkedin.com/in/douglas-jarnot-3ba87334**
-**Website**
-* **stthomas.edu/** (University Website)
-**Email**
-**douglas.r.jarnot@gmail.com**
-**Birthday**
-October 8
-**Connected**
-Feb 13, 2019"""
-    
-    parsed = parse_any_contact_input(test_input)
-    
+    """Simple debug endpoint"""
     last_contact = get_last_contact()
     return f'''
     <html>
     <head><title>EspoCRM AI Copilot Debug</title></head>
     <body style="font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px;">
         <h2>🔍 EspoCRM AI Copilot Debug Info</h2>
-        
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <h3>Parser Test Result</h3>
-            <p><strong>Test Input:</strong> Douglas Jarnot LinkedIn format</p>
-            <p><strong>Parsed Name:</strong> {parsed.get('contact_name')}</p>
-            <p><strong>First Name:</strong> {parsed.get('first_name')}</p>
-            <p><strong>Last Name:</strong> {parsed.get('last_name')}</p>
-            <p><strong>Fields Found:</strong> {list(parsed.get('fields', {}).keys())}</p>
-            <details>
-                <summary>Full Parsed Data</summary>
-                <pre style="background: #eee; padding: 10px;">{json.dumps(parsed, indent=2)}</pre>
-            </details>
-        </div>
         
         <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 20px 0;">
             <h3>Session Status</h3>
@@ -1153,15 +818,22 @@ Feb 13, 2019"""
             </table>
         </div>
         
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3>Architecture</h3>
+            <p><strong>Processing Mode:</strong> AI-First Intelligence</p>
+            <p><strong>Approach:</strong> AI understands intent → Execute simple functions</p>
+            <p><strong>Benefits:</strong> Natural language, context-aware, self-learning</p>
+        </div>
+        
         <p><a href="/">🏠 Main App</a> | <a href="/logout">🚪 Logout</a> | <a href="/reset">🔄 Reset</a></p>
     </body>
     </html>
     '''
 
 if __name__ == '__main__':
-    print("🚀 Starting EspoCRM AI Copilot - ENHANCED VERSION")
-    print("✨ Features: Universal parser for any input format")
-    print("🤖 Handles: Markdown, LinkedIn copies, messy data")
+    print("🚀 Starting EspoCRM AI Copilot - AI-FIRST VERSION")
+    print("✨ Features: Intelligent intent understanding")
+    print("🤖 Approach: Let AI do the thinking, we do the executing")
     print(f"🌐 Visit: http://localhost:5000")
     print(f"🔒 Use login form with access token")
     app.run(host="0.0.0.0", port=5000, debug=True)
