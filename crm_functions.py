@@ -86,65 +86,185 @@ class CRMManager:
             return []
 
     def update_contact_simple(self, contact_id: str, updates: Dict[str, Any]) -> Tuple[bool, str]:
-        """Simple contact update with detailed debugging and EspoCRM phoneNumberData support"""
+        """Simple contact update with detailed debugging and EspoCRM phoneNumberData support for MULTIPLE phones"""
         try:
             logger.info(f"=== UPDATE_CONTACT_SIMPLE DEBUG ===")
             logger.info(f"Contact ID: {contact_id}")
             logger.info(f"Updates being sent to CRM: {updates}")
-            
-            # Special handling for phone number updates - try both approaches
+
+            phone_update_success = False
+            phone_update_msg = ""
+
+            # Special handling for phone number updates
             if 'phoneNumber' in updates or 'phoneNumberData' in updates:
-                logger.info(f"Phone number update detected, testing formats...")
-                
-                # Extract the phone value for testing
-                phone_value = updates.get('phoneNumber', '')
-                if not phone_value and 'phoneNumberData' in updates:
-                    phone_data = updates['phoneNumberData']
-                    if phone_data and isinstance(phone_data, list) and len(phone_data) > 0:
-                        phone_value = phone_data[0].get('phoneNumber', '')
-                
-                if phone_value:
-                    # Test the phone format testing first
-                    working_format, result_msg = test_phone_formats_with_crm(phone_value, contact_id, self.espocrm_url, self.headers)
-                    
-                    if working_format:
-                        logger.info(f"Found working phone format: {working_format}")
-                        return True, f"Phone updated successfully: {result_msg}"
+                logger.info(f"Phone number update detected...")
+
+                # Check if phoneNumberData is provided (supports multiple phones)
+                if 'phoneNumberData' in updates and isinstance(updates['phoneNumberData'], list):
+                    phone_data_list = updates['phoneNumberData']
+                    logger.info(f"Multiple phones detected: {len(phone_data_list)} entries")
+
+                    # Format all phone numbers properly
+                    formatted_phone_data = []
+                    for i, phone_entry in enumerate(phone_data_list):
+                        phone_num = phone_entry.get('phoneNumber', '')
+                        if phone_num:
+                            # Clean and format the phone number
+                            digits_only = re.sub(r'[^\d]', '', str(phone_num))
+                            if len(digits_only) == 10:
+                                formatted_phone = f"+1{digits_only}"
+                            elif len(digits_only) == 11 and digits_only.startswith('1'):
+                                formatted_phone = f"+{digits_only}"
+                            elif len(digits_only) > 10:
+                                formatted_phone = f"+1{digits_only[-10:]}"
+                            else:
+                                formatted_phone = phone_num  # Keep as-is
+
+                            formatted_entry = {
+                                "phoneNumber": formatted_phone,
+                                "type": phone_entry.get('type', 'Mobile'),
+                                "primary": phone_entry.get('primary', i == 0),  # First is primary if not specified
+                                "optOut": phone_entry.get('optOut', False),
+                                "invalid": phone_entry.get('invalid', False)
+                            }
+                            formatted_phone_data.append(formatted_entry)
+                            logger.info(f"Formatted phone {i+1}: {formatted_entry}")
+
+                    if formatted_phone_data:
+                        # Send all phones at once via phoneNumberData
+                        phone_update = {'phoneNumberData': formatted_phone_data}
+                        response = requests.put(f"{self.espocrm_url}/Contact/{contact_id}",
+                                              json=phone_update, headers=self.headers, timeout=10)
+
+                        if response.status_code in [200, 204]:
+                            phone_update_success = True
+                            phone_update_msg = f"Updated {len(formatted_phone_data)} phone number(s)"
+                            logger.info(f"SUCCESS! Multiple phones updated: {phone_update_msg}")
+                        else:
+                            logger.error(f"Phone update failed: {response.status_code} - {response.text}")
+                            phone_update_msg = f"Phone update failed: {response.status_code}"
                     else:
-                        logger.error(f"All phone formats failed: {result_msg}")
-                        return False, f"Phone number validation failed: {result_msg}"
-                else:
-                    return False, "No phone number provided in update"
-            
-            # For non-phone updates, proceed with normal update
-            clean_updates = {k: v for k, v in updates.items() if k != 'phoneNumberData'}
-            
-            # Validate that we have the contact ID and updates
+                        phone_update_msg = "No valid phone numbers in phoneNumberData"
+
+                # Fallback: single phone number
+                elif 'phoneNumber' in updates:
+                    phone_value = updates.get('phoneNumber', '')
+                    if phone_value:
+                        working_format, result_msg = test_phone_formats_with_crm(phone_value, contact_id, self.espocrm_url, self.headers)
+
+                        if working_format:
+                            logger.info(f"Found working phone format: {working_format}")
+                            phone_update_success = True
+                            phone_update_msg = f"Phone updated successfully: {result_msg}"
+                        else:
+                            logger.error(f"All phone formats failed: {result_msg}")
+                            phone_update_msg = f"Phone number validation failed: {result_msg}"
+                    else:
+                        phone_update_msg = "No phone number provided in update"
+
+            # Special handling for email address updates (supports multiple emails)
+            email_update_success = False
+            email_update_msg = ""
+
+            if 'emailAddress' in updates or 'emailAddressData' in updates:
+                logger.info(f"Email address update detected...")
+
+                # Check if emailAddressData is provided (supports multiple emails)
+                if 'emailAddressData' in updates and isinstance(updates['emailAddressData'], list):
+                    email_data_list = updates['emailAddressData']
+                    logger.info(f"Multiple emails detected: {len(email_data_list)} entries")
+
+                    # Format all email addresses properly
+                    formatted_email_data = []
+                    for i, email_entry in enumerate(email_data_list):
+                        email_addr = email_entry.get('emailAddress', '')
+                        if email_addr and '@' in email_addr:
+                            formatted_entry = {
+                                "emailAddress": email_addr.strip().lower(),
+                                "primary": email_entry.get('primary', i == 0),  # First is primary if not specified
+                                "optOut": email_entry.get('optOut', False),
+                                "invalid": email_entry.get('invalid', False)
+                            }
+                            formatted_email_data.append(formatted_entry)
+                            logger.info(f"Formatted email {i+1}: {formatted_entry}")
+
+                    if formatted_email_data:
+                        # Send all emails at once via emailAddressData
+                        email_update = {'emailAddressData': formatted_email_data}
+                        response = requests.put(f"{self.espocrm_url}/Contact/{contact_id}",
+                                              json=email_update, headers=self.headers, timeout=10)
+
+                        if response.status_code in [200, 204]:
+                            email_update_success = True
+                            email_update_msg = f"Updated {len(formatted_email_data)} email(s)"
+                            logger.info(f"SUCCESS! Multiple emails updated: {email_update_msg}")
+                        else:
+                            logger.error(f"Email update failed: {response.status_code} - {response.text}")
+                            email_update_msg = f"Email update failed: {response.status_code}"
+                    else:
+                        email_update_msg = "No valid emails in emailAddressData"
+
+                # Fallback: single email address
+                elif 'emailAddress' in updates:
+                    email_value = updates.get('emailAddress', '')
+                    if email_value and '@' in email_value:
+                        email_update = {'emailAddress': email_value.strip().lower()}
+                        response = requests.put(f"{self.espocrm_url}/Contact/{contact_id}",
+                                              json=email_update, headers=self.headers, timeout=10)
+
+                        if response.status_code in [200, 204]:
+                            email_update_success = True
+                            email_update_msg = f"Email updated: {email_value}"
+                            logger.info(f"SUCCESS! Email updated: {email_value}")
+                        else:
+                            logger.error(f"Email update failed: {response.status_code} - {response.text}")
+                            email_update_msg = f"Email update failed: {response.status_code}"
+                    else:
+                        email_update_msg = "Invalid email address provided"
+
+            # For non-phone/email updates, proceed with normal update
+            clean_updates = {k: v for k, v in updates.items() if k not in ['phoneNumber', 'phoneNumberData', 'emailAddress', 'emailAddressData']}
+
+            # Validate that we have the contact ID
             if not contact_id:
                 logger.error("No contact ID provided!")
                 return False, "No contact ID provided"
-            
-            if not clean_updates:
+
+            # Process other field updates if present
+            other_fields_success = False
+            other_fields_msg = ""
+
+            if clean_updates:
+                logger.info(f"Updating other fields: {list(clean_updates.keys())}")
+                response = requests.put(f"{self.espocrm_url}/Contact/{contact_id}",
+                                      json=clean_updates, headers=self.headers, timeout=10)
+
+                logger.info(f"CRM Response Status: {response.status_code}")
+
+                if response.status_code not in [200, 204]:
+                    logger.error(f"CRM Response Error: {response.text}")
+
+                    try:
+                        error_data = response.json()
+                        logger.error(f"CRM Error Details: {error_data}")
+                        other_fields_msg = f"Other fields update failed: CRM Error {response.status_code}: {error_data}"
+                    except:
+                        other_fields_msg = f"Other fields update failed: CRM Error {response.status_code}: {response.text}"
+                else:
+                    logger.info("Other fields update successful!")
+                    other_fields_success = True
+                    other_fields_msg = f"Updated fields: {', '.join(clean_updates.keys())}"
+
+            # Combine results
+            all_messages = [phone_update_msg, email_update_msg, other_fields_msg]
+            any_success = phone_update_success or email_update_success or other_fields_success
+
+            if any(all_messages):
+                combined_msg = " | ".join(filter(None, all_messages))
+                return any_success, combined_msg
+            else:
                 logger.error("No updates provided!")
                 return False, "No updates provided"
-            
-            response = requests.put(f"{self.espocrm_url}/Contact/{contact_id}", 
-                                  json=clean_updates, headers=self.headers, timeout=10)
-            
-            logger.info(f"CRM Response Status: {response.status_code}")
-            
-            if response.status_code not in [200, 204]:
-                logger.error(f"CRM Response Error: {response.text}")
-                
-                try:
-                    error_data = response.json()
-                    logger.error(f"CRM Error Details: {error_data}")
-                    return False, f"CRM Error {response.status_code}: {error_data}"
-                except:
-                    return False, f"CRM Error {response.status_code}: {response.text}"
-            else:
-                logger.info("Update successful!")
-                return True, "Success"
             
         except requests.exceptions.Timeout:
             error_msg = "CRM request timed out"
@@ -179,22 +299,20 @@ class CRMManager:
                         if original_phone:
                             digits_only = re.sub(r'[^\d]', '', original_phone)
                             logger.info(f"🔍 PHONE FORMAT TEST: Original='{original_phone}', Digits='{digits_only}'")
-                            
-                            # Try formats that have worked in updates
+
+                            # Use international format (+1XXXXXXXXXX) since phoneNumberInternational=true in CRM config
                             if len(digits_only) == 10:
-                                # Test different formats - same as Tom's successful update
-                                test_formats = [
-                                    f"{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}",  # 240-421-1073
-                                    f"({digits_only[:3]}) {digits_only[3:6]}-{digits_only[6:]}",  # (240) 421-1073
-                                    f"{digits_only[:3]}.{digits_only[3:6]}.{digits_only[6:]}",  # 240.421.1073
-                                    f"{digits_only}",  # 2404211073
-                                    f"+1{digits_only}",  # +12404211073
-                                ]
-                                
-                                # Use the dash format that worked for Tom
-                                formatted_phone = test_formats[0]  # XXX-XXX-XXXX format
-                                phone_entry['phoneNumber'] = formatted_phone
-                                logger.info(f"🔍 PHONE FORMAT: Using dash format like Tom's update: '{formatted_phone}'")
+                                formatted_phone = f"+1{digits_only}"
+                            elif len(digits_only) == 11 and digits_only.startswith('1'):
+                                formatted_phone = f"+{digits_only}"
+                            elif len(digits_only) > 10:
+                                # Use last 10 digits with +1
+                                formatted_phone = f"+1{digits_only[-10:]}"
+                            else:
+                                formatted_phone = original_phone  # Keep as-is if less than 10 digits
+
+                            phone_entry['phoneNumber'] = formatted_phone
+                            logger.info(f"🔍 PHONE FORMAT: Using international format: '{formatted_phone}'")
                             
                             contact_data['phoneNumberData'] = [phone_entry]
                             logger.info(f"✅ CREATE_CONTACT: Added phoneNumberData: {[phone_entry]}")
@@ -203,7 +321,11 @@ class CRMManager:
                     else:
                         logger.warning(f"⚠️ CREATE_CONTACT: Invalid phoneNumberData structure: {value}")
                 else:
-                    contact_data[key] = str(value).strip()
+                    # Handle boolean values properly
+                    if isinstance(value, bool):
+                        contact_data[key] = value
+                    else:
+                        contact_data[key] = str(value).strip()
                     logger.info(f"🔍 CREATE_CONTACT: Added {key}='{value}'")
         
         logger.info(f"🔍 CREATE_CONTACT: Final contact_data keys: {list(contact_data.keys())}")
@@ -280,21 +402,25 @@ class CRMManager:
                 # If phone validation fails, ALWAYS try creating without phone first
                 if 'phoneNumber' in response.text and 'valid' in response.text:
                     logger.info(f"🔄 RETRY: Phone validation failed, creating without phone first...")
-                    
+
                     # Extract phone data before removing it
                     phone_data_to_add = contact_data.get('phoneNumberData')
-                    
-                    # Create contact without phone
-                    contact_data_no_phone = {k: v for k, v in contact_data.items() if k != 'phoneNumberData'}
-                    
-                    retry_response = requests.post(f"{self.espocrm_url}/Contact", 
+
+                    # Create contact without phone - remove BOTH phoneNumberData AND phoneNumber
+                    contact_data_no_phone = {k: v for k, v in contact_data.items() if k not in ['phoneNumberData', 'phoneNumber']}
+
+                    logger.info(f"🔍 RETRY: Contact data WITHOUT phone (should have email): {contact_data_no_phone}")
+
+                    retry_response = requests.post(f"{self.espocrm_url}/Contact",
                                                  json=contact_data_no_phone, headers=self.headers, timeout=10)
-                    
+
+                    logger.info(f"🔍 RETRY: Response status: {retry_response.status_code}")
+
                     if retry_response.status_code in [200, 201]:
                         created_contact = retry_response.json()
                         contact_id = created_contact.get('id')
                         logger.info(f"✅ CREATE_CONTACT: Created without phone: {name} (ID: {contact_id})")
-                        
+
                         # Now try to add phone via update (which we know works)
                         if phone_data_to_add:
                             logger.info(f"🔄 RETRY: Now attempting to add phone via update...")
@@ -307,9 +433,27 @@ class CRMManager:
                                 return f"✅ Successfully created contact: **{name}** (phone will need to be added manually: {update_msg})", contact_id
                         else:
                             return f"✅ Successfully created contact: **{name}**", contact_id
+                    elif retry_response.status_code == 409:
+                        # Conflict - contact already exists, try to find it
+                        logger.info(f"🔍 CONFLICT on retry: Contact may already exist, searching...")
+                        existing = self.search_contacts_simple(kwargs.get('emailAddress', ''))
+                        if existing:
+                            contact_id = existing[0].get('id')
+                            logger.info(f"✅ Found existing contact: {contact_id}")
+
+                            # Try to add phone to existing contact
+                            if phone_data_to_add:
+                                logger.info(f"🔄 Attempting to add phone to existing contact...")
+                                update_success, update_msg = self.update_contact_simple(contact_id, {'phoneNumberData': phone_data_to_add})
+                                if update_success:
+                                    logger.info(f"✅ PHONE UPDATE: Successfully added phone via update")
+
+                            return f"✅ Found and updated existing contact: **{name}**", contact_id
+                        else:
+                            return f"❌ Contact conflict but couldn't find existing record", None
                     else:
-                        logger.error(f"❌ RETRY: Even creating without phone failed: {retry_response.status_code}")
-                        return f"❌ Failed to create contact even without phone: {retry_response.text}", None
+                        logger.error(f"❌ RETRY: Failed with status {retry_response.status_code}: {retry_response.text}")
+                        return f"❌ Failed to create contact: {retry_response.status_code}", None
                 
                 return f"❌ Failed to create contact: Server returned error {response.status_code} - {response.text}", None
                 
@@ -523,7 +667,7 @@ class CRMManager:
             result_text = f"**Contact Details: {actual_name}**\n\n"
             
             fields = [
-                ('Email', 'emailAddress'),
+                ('Email', 'emailAddressData'),
                 ('Phone', 'phoneNumberData'),
                 ('Title', 'cCurrentTitle'),
                 ('Current Company', 'cCurrentCompany'),
@@ -537,11 +681,11 @@ class CRMManager:
                 ('Created', 'createdAt'),
                 ('Modified', 'modifiedAt')
             ]
-            
+
             for label, field in fields:
                 if contact.get(field):
                     if field == 'phoneNumberData':
-                        # Handle phone number data structure
+                        # Handle phone number data structure (multiple phones)
                         phone_data = contact[field]
                         if isinstance(phone_data, list) and len(phone_data) > 0:
                             result_text += f"**{label}:**\n"
@@ -551,6 +695,18 @@ class CRMManager:
                                 is_primary = phone_entry.get('primary', False)
                                 primary_text = " (Primary)" if is_primary else ""
                                 result_text += f"  • {phone_num} ({phone_type}){primary_text}\n"
+                    elif field == 'emailAddressData':
+                        # Handle email address data structure (multiple emails)
+                        email_data = contact[field]
+                        if isinstance(email_data, list) and len(email_data) > 0:
+                            result_text += f"**{label}:**\n"
+                            for email_entry in email_data:
+                                email_addr = email_entry.get('emailAddress', '')
+                                is_primary = email_entry.get('primary', False)
+                                is_optout = email_entry.get('optOut', False)
+                                primary_text = " (Primary)" if is_primary else ""
+                                optout_text = " [Opted Out]" if is_optout else ""
+                                result_text += f"  • {email_addr}{primary_text}{optout_text}\n"
                     else:
                         result_text += f"**{label}:** {contact[field]}\n"
             
@@ -1271,3 +1427,498 @@ class CRMManager:
             error_msg = f"Error checking availability: {str(e)}"
             logger.error(error_msg)
             return f"❌ {error_msg}"
+
+    def upload_attachment(self, parent_type: str, parent_id: str, file_data, filename: str, field_name: str = 'cResume') -> Tuple[bool, str]:
+        """
+        Upload an attachment to EspoCRM for a File type field
+        Follows the official EspoCRM API documentation
+
+        Args:
+            parent_type: The type of parent entity (e.g., 'Contact', 'Lead')
+            parent_id: The ID of the parent entity
+            file_data: The file data (bytes or file object)
+            filename: The name of the file
+            field_name: The field name to attach to (default: 'cResume')
+
+        Returns:
+            Tuple of (success: bool, message/attachment_id: str)
+        """
+        try:
+            import base64
+
+            logger.info(f"Uploading attachment '{filename}' to {parent_type} {parent_id} field {field_name}")
+
+            # Determine MIME type
+            if filename.lower().endswith('.pdf'):
+                mime_type = 'application/pdf'
+            elif filename.lower().endswith('.docx'):
+                mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            elif filename.lower().endswith('.doc'):
+                mime_type = 'application/msword'
+            else:
+                mime_type = 'application/octet-stream'
+
+            # Step 1: Encode file contents to base64
+            if isinstance(file_data, bytes):
+                file_contents_base64 = base64.b64encode(file_data).decode('utf-8')
+            else:
+                file_contents_base64 = base64.b64encode(file_data.read()).decode('utf-8')
+
+            # Step 2: Create data URI
+            data_uri = f"data:{mime_type};base64,{file_contents_base64}"
+
+            # Step 3: POST to Attachment endpoint with proper payload
+            attachment_payload = {
+                "name": filename,
+                "type": mime_type,
+                "role": "Attachment",
+                "relatedType": parent_type,
+                "field": field_name,
+                "file": data_uri
+            }
+
+            logger.info(f"Creating attachment with name={filename}, type={mime_type}, relatedType={parent_type}, field={field_name}")
+
+            create_response = requests.post(
+                f"{self.espocrm_url}/Attachment",
+                json=attachment_payload,
+                headers=self.headers,
+                timeout=60  # Longer timeout for large files
+            )
+
+            logger.info(f"Attachment create response status: {create_response.status_code}")
+
+            if create_response.status_code not in [200, 201]:
+                logger.error(f"Attachment creation failed: {create_response.status_code} - {create_response.text}")
+                return False, f"Failed to create attachment: {create_response.status_code}"
+
+            attachment_result = create_response.json()
+            attachment_id = attachment_result.get('id')
+            logger.info(f"Attachment created with ID: {attachment_id}")
+
+            # Step 4: Link attachment to the contact's field
+            update_payload = {
+                field_name + 'Id': attachment_id
+            }
+
+            logger.info(f"Linking attachment {attachment_id} to {parent_type} {parent_id}.{field_name}")
+
+            link_response = requests.put(
+                f"{self.espocrm_url}/{parent_type}/{parent_id}",
+                json=update_payload,
+                headers=self.headers,
+                timeout=10
+            )
+
+            logger.info(f"Link response status: {link_response.status_code}")
+
+            if link_response.status_code in [200, 201]:
+                logger.info(f"Successfully linked attachment to {parent_type} {parent_id}.{field_name}")
+                return True, attachment_id
+            else:
+                logger.warning(f"Failed to link attachment: {link_response.status_code} - {link_response.text}")
+                return True, f"{attachment_id} (uploaded but link may have failed)"
+
+        except Exception as e:
+            error_msg = f"Error uploading attachment: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return False, error_msg
+
+    # TASK AND REMINDER MANAGEMENT METHODS
+
+    def get_all_users_for_tasks(self) -> List[Dict[str, Any]]:
+        """Get list of all active users for task assignment"""
+        try:
+            params = {
+                "select": "id,name,userName,emailAddress,firstName,lastName",
+                "where[0][type]": "isTrue",
+                "where[0][attribute]": "isActive",
+                "maxSize": 50,
+                "orderBy": "name"
+            }
+
+            response = requests.get(f"{self.espocrm_url}/User",
+                                  params=params, headers=self.headers, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                users = data.get("list", [])
+                # Filter out system users
+                users = [u for u in users if u.get('userName') not in ['system', 'backupadmin']]
+                logger.info(f"Found {len(users)} active users for task assignment")
+                return users
+            else:
+                logger.error(f"Failed to get users: {response.status_code}")
+                return []
+        except Exception as e:
+            logger.error(f"Error getting users: {e}")
+            return []
+
+    def find_user_for_task(self, user_identifier: str) -> Optional[Dict[str, Any]]:
+        """Find user by name, username, or partial match"""
+        if not user_identifier:
+            return None
+
+        users = self.get_all_users_for_tasks()
+        user_lower = user_identifier.lower().strip()
+
+        # First try exact match on name or username
+        for user in users:
+            name = user.get('name') or ''
+            userName = user.get('userName') or ''
+            firstName = user.get('firstName') or ''
+            if (name.lower() == user_lower or
+                userName.lower() == user_lower or
+                firstName.lower() == user_lower):
+                return user
+
+        # Then try partial match
+        for user in users:
+            name = user.get('name') or ''
+            firstName = user.get('firstName') or ''
+            lastName = user.get('lastName') or ''
+            if (user_lower in name.lower() or
+                user_lower in firstName.lower() or
+                user_lower in lastName.lower()):
+                return user
+
+        return None
+
+    def list_users_for_assignment(self) -> str:
+        """List all users available for task assignment"""
+        users = self.get_all_users_for_tasks()
+
+        if not users:
+            return "❌ No active users found."
+
+        result = "**👥 Available Users for Task Assignment:**\n\n"
+        for user in users:
+            name = user.get('name', 'Unknown')
+            username = user.get('userName', '')
+            email = user.get('emailAddress', '')
+            result += f"• **{name}** (@{username})"
+            if email:
+                result += f" - {email}"
+            result += "\n"
+
+        return result
+
+    def create_task(self, name: str, assigned_to: str = None, due_date: str = None,
+                   description: str = None, priority: str = "Normal",
+                   related_contact: str = None) -> str:
+        """
+        Create a task/reminder for a user
+
+        Args:
+            name: Task title/description
+            assigned_to: User name to assign to (will prompt if not provided)
+            due_date: Due date in YYYY-MM-DD format
+            description: Additional details
+            priority: Low, Normal, High, Urgent
+            related_contact: Contact name to link task to
+        """
+        try:
+            # If no user specified, list available users
+            if not assigned_to:
+                user_list = self.list_users_for_assignment()
+                return f"📋 **Who should I assign this task to?**\n\n**Task:** {name}\n\n{user_list}\n\nPlease specify: *'assign to [Name]'* or *'for [Name]'*"
+
+            # Find the user
+            user = self.find_user_for_task(assigned_to)
+            if not user:
+                user_list = self.list_users_for_assignment()
+                return f"❌ User '{assigned_to}' not found.\n\n{user_list}"
+
+            user_id = user['id']
+            user_name = user.get('name', assigned_to)
+
+            # Build task data
+            task_data = {
+                "name": name,
+                "assignedUserId": user_id,
+                "status": "Not Started",
+                "priority": priority if priority in ["Low", "Normal", "High", "Urgent"] else "Normal"
+            }
+
+            # Add due date if provided
+            if due_date:
+                # Handle various date formats
+                task_data["dateEndDate"] = due_date  # Date-only field
+                task_data["dateEnd"] = f"{due_date} 17:00:00"  # Full datetime (5 PM default)
+
+            # Add description if provided
+            if description:
+                task_data["description"] = description
+
+            # Link to contact if specified
+            contact_info = ""
+            if related_contact:
+                contacts = self.search_contacts_simple(related_contact)
+                if contacts:
+                    contact = contacts[0]
+                    task_data["parentId"] = contact['id']
+                    task_data["parentType"] = "Contact"
+                    task_data["contactId"] = contact['id']
+                    contact_info = f"\n📇 **Linked to:** {contact.get('name', related_contact)}"
+
+            logger.info(f"Creating task: {task_data}")
+
+            response = requests.post(f"{self.espocrm_url}/Task",
+                                   json=task_data, headers=self.headers, timeout=10)
+
+            if response.status_code in [200, 201]:
+                created_task = response.json()
+                task_id = created_task.get('id')
+                logger.info(f"Task created successfully: {task_id}")
+
+                result = f"✅ **Task Created**\n\n"
+                result += f"📋 **Task:** {name}\n"
+                result += f"👤 **Assigned to:** {user_name}\n"
+                result += f"📊 **Priority:** {priority}\n"
+                if due_date:
+                    result += f"📅 **Due:** {due_date}\n"
+                if description:
+                    result += f"📝 **Notes:** {description}\n"
+                result += contact_info
+
+                return result
+            else:
+                logger.error(f"Task creation failed: {response.status_code} - {response.text}")
+                return f"❌ Failed to create task: {response.status_code} - {response.text}"
+
+        except Exception as e:
+            error_msg = f"Error creating task: {str(e)}"
+            logger.error(error_msg)
+            return f"❌ {error_msg}"
+
+    def get_user_tasks(self, user_name: str = None, status_filter: str = "open") -> str:
+        """
+        Get tasks for a specific user or all users
+
+        Args:
+            user_name: User to get tasks for (optional - shows all if not specified)
+            status_filter: "open" (Not Started, Started), "all", or specific status
+        """
+        try:
+            params = {
+                "select": "id,name,status,priority,dateEnd,dateEndDate,description,assignedUserName,parentName,parentType",
+                "maxSize": 50,
+                "orderBy": "dateEnd",
+                "order": "asc"
+            }
+
+            # Filter by user if specified
+            if user_name:
+                user = self.find_user_for_task(user_name)
+                if not user:
+                    return f"❌ User '{user_name}' not found."
+                params["where[0][field]"] = "assignedUserId"
+                params["where[0][type]"] = "equals"
+                params["where[0][value]"] = user['id']
+                filter_index = 1
+            else:
+                filter_index = 0
+
+            # Filter by status
+            if status_filter == "open":
+                params[f"where[{filter_index}][type]"] = "or"
+                params[f"where[{filter_index}][value][0][field]"] = "status"
+                params[f"where[{filter_index}][value][0][type]"] = "equals"
+                params[f"where[{filter_index}][value][0][value]"] = "Not Started"
+                params[f"where[{filter_index}][value][1][field]"] = "status"
+                params[f"where[{filter_index}][value][1][type]"] = "equals"
+                params[f"where[{filter_index}][value][1][value]"] = "Started"
+            elif status_filter != "all":
+                params[f"where[{filter_index}][field]"] = "status"
+                params[f"where[{filter_index}][type]"] = "equals"
+                params[f"where[{filter_index}][value]"] = status_filter
+
+            response = requests.get(f"{self.espocrm_url}/Task",
+                                  params=params, headers=self.headers, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                tasks = data.get("list", [])
+                total = data.get("total", len(tasks))
+
+                if not tasks:
+                    user_info = f" for **{user_name}**" if user_name else ""
+                    return f"📋 No {status_filter} tasks found{user_info}."
+
+                user_info = f" for **{user_name}**" if user_name else ""
+                result = f"**📋 Tasks{user_info} ({len(tasks)} of {total}):**\n\n"
+
+                # Group by status
+                status_icons = {
+                    "Not Started": "⏳",
+                    "Started": "🔄",
+                    "Completed": "✅",
+                    "Canceled": "❌",
+                    "Deferred": "⏸️"
+                }
+
+                priority_icons = {
+                    "Urgent": "🔴",
+                    "High": "🟠",
+                    "Normal": "🟢",
+                    "Low": "⚪"
+                }
+
+                for task in tasks:
+                    status = task.get('status', 'Unknown')
+                    priority = task.get('priority', 'Normal')
+                    status_icon = status_icons.get(status, "📋")
+                    priority_icon = priority_icons.get(priority, "")
+
+                    result += f"{status_icon} {priority_icon} **{task.get('name', 'Untitled')}**\n"
+
+                    if not user_name and task.get('assignedUserName'):
+                        result += f"   👤 {task['assignedUserName']}\n"
+
+                    due_date = task.get('dateEndDate') or task.get('dateEnd', '')
+                    if due_date:
+                        # Format date nicely
+                        if len(due_date) > 10:
+                            due_date = due_date[:10]
+                        result += f"   📅 Due: {due_date}\n"
+
+                    if task.get('parentName'):
+                        result += f"   📇 {task['parentType']}: {task['parentName']}\n"
+
+                    result += "\n"
+
+                return result
+            else:
+                return f"❌ Failed to get tasks: {response.status_code}"
+
+        except Exception as e:
+            error_msg = f"Error getting tasks: {str(e)}"
+            logger.error(error_msg)
+            return f"❌ {error_msg}"
+
+    def update_task_status(self, task_identifier: str, new_status: str, user_name: str = None) -> str:
+        """
+        Update a task's status
+
+        Args:
+            task_identifier: Task name or partial match
+            new_status: New status (Completed, Started, Not Started, Canceled, Deferred)
+            user_name: User whose task to update (helps narrow down search)
+        """
+        try:
+            # Valid statuses
+            valid_statuses = ["Not Started", "Started", "Completed", "Canceled", "Deferred"]
+
+            # Normalize status input
+            status_map = {
+                "complete": "Completed",
+                "completed": "Completed",
+                "done": "Completed",
+                "finish": "Completed",
+                "finished": "Completed",
+                "start": "Started",
+                "started": "Started",
+                "in progress": "Started",
+                "cancel": "Canceled",
+                "cancelled": "Canceled",
+                "canceled": "Canceled",
+                "defer": "Deferred",
+                "deferred": "Deferred",
+                "postpone": "Deferred",
+                "not started": "Not Started",
+                "reset": "Not Started",
+                "reopen": "Not Started"
+            }
+
+            normalized_status = status_map.get(new_status.lower(), new_status)
+            if normalized_status not in valid_statuses:
+                return f"❌ Invalid status '{new_status}'. Valid options: {', '.join(valid_statuses)}"
+
+            # Search for the task
+            params = {
+                "select": "id,name,status,assignedUserId,assignedUserName",
+                "maxSize": 20,
+                "where[0][field]": "name",
+                "where[0][type]": "contains",
+                "where[0][value]": task_identifier
+            }
+
+            # Filter by user if specified
+            if user_name:
+                user = self.find_user_for_task(user_name)
+                if user:
+                    params["where[1][field]"] = "assignedUserId"
+                    params["where[1][type]"] = "equals"
+                    params["where[1][value]"] = user['id']
+
+            response = requests.get(f"{self.espocrm_url}/Task",
+                                  params=params, headers=self.headers, timeout=10)
+
+            if response.status_code != 200:
+                return f"❌ Failed to search for task: {response.status_code}"
+
+            data = response.json()
+            tasks = data.get("list", [])
+
+            if not tasks:
+                return f"❌ No task found matching '{task_identifier}'"
+
+            if len(tasks) > 1:
+                # Multiple matches - show options
+                result = f"🔍 Found {len(tasks)} tasks matching '{task_identifier}':\n\n"
+                for i, task in enumerate(tasks[:5], 1):
+                    result += f"{i}. **{task.get('name')}** ({task.get('status')}) - {task.get('assignedUserName', 'Unassigned')}\n"
+                result += "\nPlease be more specific or specify the user."
+                return result
+
+            # Update the task
+            task = tasks[0]
+            task_id = task['id']
+
+            update_data = {"status": normalized_status}
+
+            # Add completion date if marking complete
+            if normalized_status == "Completed":
+                from datetime import datetime
+                update_data["dateCompleted"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+            response = requests.put(f"{self.espocrm_url}/Task/{task_id}",
+                                  json=update_data, headers=self.headers, timeout=10)
+
+            if response.status_code in [200, 204]:
+                status_icons = {
+                    "Not Started": "⏳",
+                    "Started": "🔄",
+                    "Completed": "✅",
+                    "Canceled": "❌",
+                    "Deferred": "⏸️"
+                }
+                icon = status_icons.get(normalized_status, "📋")
+                return f"{icon} **Task Updated**\n\n**Task:** {task.get('name')}\n**New Status:** {normalized_status}\n**Assigned to:** {task.get('assignedUserName', 'Unassigned')}"
+            else:
+                return f"❌ Failed to update task: {response.status_code}"
+
+        except Exception as e:
+            error_msg = f"Error updating task: {str(e)}"
+            logger.error(error_msg)
+            return f"❌ {error_msg}"
+
+    def create_reminder(self, reminder_text: str, for_user: str, due_date: str = None,
+                       related_contact: str = None) -> str:
+        """
+        Create a reminder (which is just a task with 'Urgent' or 'High' priority)
+
+        Args:
+            reminder_text: What to remind about
+            for_user: Who to remind
+            due_date: When to remind (YYYY-MM-DD)
+            related_contact: Contact to link to
+        """
+        # Reminders are tasks with high priority
+        return self.create_task(
+            name=f"Reminder: {reminder_text}",
+            assigned_to=for_user,
+            due_date=due_date,
+            priority="High",
+            related_contact=related_contact
+        )
