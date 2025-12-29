@@ -371,12 +371,42 @@ def handle_function_call(function_name: str, arguments: dict, user_input: str = 
             # Handle phone number specially - convert to phoneNumberData
             if 'phoneNumber' in updates:
                 phone_value = updates['phoneNumber']
-                phone_data = create_phone_number_data(phone_value, "Mobile", True)
-                if phone_data:
-                    updates['phoneNumberData'] = phone_data
-                    del updates['phoneNumber']
+                # Check for comma-separated multiple phones
+                if ',' in str(phone_value):
+                    phone_parts = [p.strip() for p in phone_value.split(',') if p.strip()]
+                    phone_data = []
+                    for i, phone in enumerate(phone_parts):
+                        single_data = create_phone_number_data(phone, "Mobile", i == 0)
+                        if single_data:
+                            phone_data.extend(single_data)
+                    if phone_data:
+                        updates['phoneNumberData'] = phone_data
+                        del updates['phoneNumber']
+                    else:
+                        return f"❌ Invalid phone number format: {phone_value}"
                 else:
-                    return f"❌ Invalid phone number format: {phone_value}"
+                    phone_data = create_phone_number_data(phone_value, "Mobile", True)
+                    if phone_data:
+                        updates['phoneNumberData'] = phone_data
+                        del updates['phoneNumber']
+                    else:
+                        return f"❌ Invalid phone number format: {phone_value}"
+
+            # Handle email address specially - convert to emailAddressData if multiple
+            if 'emailAddress' in updates:
+                email_value = updates['emailAddress']
+                # Check for comma-separated multiple emails
+                if ',' in str(email_value):
+                    email_parts = [e.strip() for e in email_value.split(',') if e.strip() and '@' in e]
+                    if email_parts:
+                        email_data = []
+                        for i, email in enumerate(email_parts):
+                            email_data.append({
+                                'emailAddress': email.lower(),
+                                'primary': i == 0
+                            })
+                        updates['emailAddressData'] = email_data
+                        del updates['emailAddress']
             
             # Clean updates
             clean_updates = {k: v for k, v in updates.items() if v is not None and str(v).strip() != ""}

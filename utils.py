@@ -20,50 +20,49 @@ def sanitize_input(text):
 
 # Phone number formatting functions
 def format_phone_for_crm(phone_string: str) -> str:
-    """Format phone number for EspoCRM Phone field validation - try multiple formats"""
+    """Format phone number for EspoCRM Phone field validation - uses international format (+1XXXXXXXXXX)"""
     if not phone_string:
         return ""
-    
+
     # Extract digits only
     digits_only = re.sub(r'[^\d]', '', str(phone_string))
-    
+
     if len(digits_only) == 10:
-        # Return the dash format (most common)
-        return f"{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}"
+        # Return international format with +1 prefix
+        return f"+1{digits_only}"
     elif len(digits_only) == 11 and digits_only.startswith('1'):
-        # Remove country code and format
-        digits_only = digits_only[1:]
-        return f"{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}"
+        # Already has country code, just add +
+        return f"+{digits_only}"
     elif len(digits_only) >= 10:
-        # For longer numbers, try to format the last 10 digits
+        # For longer numbers, use the last 10 digits with +1
         last_10 = digits_only[-10:]
-        return f"{last_10[:3]}-{last_10[3:6]}-{last_10[6:]}"
+        return f"+1{last_10}"
     else:
-        # If less than 10 digits, return digits only
+        # If less than 10 digits, return as-is (will likely fail validation)
         return digits_only
 
 def create_phone_number_data(phone_string: str, phone_type: str = "Mobile", is_primary: bool = True) -> List[Dict[str, Any]]:
-    """Create EspoCRM phoneNumberData structure"""
+    """Create EspoCRM phoneNumberData structure using international format (+1XXXXXXXXXX)"""
     if not phone_string:
         return []
-    
+
     # Clean the phone number
     phone_clean = str(phone_string).strip()
     digits_only = re.sub(r'[^\d]', '', phone_clean)
-    
+
     logger.info(f"Creating phoneNumberData from: '{phone_string}' -> digits: '{digits_only}'")
-    
+
     if len(digits_only) >= 10:
-        # Use a clean, standard format
+        # Use international format (+1XXXXXXXXXX) for EspoCRM with phoneNumberInternational=true
         if len(digits_only) == 10:
-            formatted_phone = f"{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}"
+            formatted_phone = f"+1{digits_only}"
         elif len(digits_only) == 11 and digits_only.startswith('1'):
-            # Remove country code
-            digits_only = digits_only[1:]
-            formatted_phone = f"{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}"
+            formatted_phone = f"+{digits_only}"
         else:
-            formatted_phone = phone_clean  # Keep original if unusual format
-        
+            # For other formats, try to use last 10 digits with +1
+            last_10 = digits_only[-10:]
+            formatted_phone = f"+1{last_10}"
+
         phone_data = {
             "phoneNumber": formatted_phone,
             "type": phone_type,
@@ -71,81 +70,94 @@ def create_phone_number_data(phone_string: str, phone_type: str = "Mobile", is_p
             "optOut": False,
             "invalid": False
         }
-        
+
         logger.info(f"Created phoneNumberData: {phone_data}")
         return [phone_data]
-    
+
     logger.warning(f"Phone number too short: {len(digits_only)} digits")
     return []
 
 def test_phone_formats_with_crm(phone_string: str, contact_id: str, espocrm_url: str, headers: Dict[str, str]) -> Tuple[Optional[str], str]:
-    """Test different phone formats with actual CRM"""
+    """Test different phone formats with actual CRM - prioritizes international format (+1XXXXXXXXXX)"""
     if not phone_string or not contact_id:
         return None, "No phone or contact ID provided"
-    
+
     digits_only = re.sub(r'[^\d]', '', str(phone_string))
+
+    # Handle 11-digit numbers starting with 1
+    if len(digits_only) == 11 and digits_only.startswith('1'):
+        digits_only = digits_only[1:]  # Strip leading 1 for formatting
+
     if len(digits_only) < 10:
         return None, f"Invalid phone number length: {len(digits_only)} digits"
-    
-    # Test formats for simple phoneNumber field first
-    test_formats = [
-        f"{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}",  # 612-875-4460
-        f"({digits_only[:3]}) {digits_only[3:6]}-{digits_only[6:]}",  # (612) 875-4460
-        f"{digits_only[:3]}.{digits_only[3:6]}.{digits_only[6:]}",  # 612.875.4460
-        f"{digits_only}",  # 6128754460
-        f"+1{digits_only}",  # +16128754460
-        f"+1-{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}",  # +1-612-875-4460
-        f"1-{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}",  # 1-612-875-4460
+
+    # Use last 10 digits if longer
+    if len(digits_only) > 10:
+        digits_only = digits_only[-10:]
+
+    # International format first since phoneNumberInternational=true in CRM config
+    international_format = f"+1{digits_only}"
+
+    logger.info(f"Testing phone format for contact {contact_id}: {international_format}")
+
+    # Try international format with phoneNumberData structure first (preferred for EspoCRM)
+    try:
+        phone_data = [{
+            "phoneNumber": international_format,
+            "type": "Mobile",
+            "primary": True,
+            "optOut": False,
+            "invalid": False
+        }]
+        test_update = {'phoneNumberData': phone_data}
+
+        response = requests.put(f"{espocrm_url}/Contact/{contact_id}",
+                              json=test_update, headers=headers, timeout=10)
+
+        if response.status_code in [200, 204]:
+            logger.info(f"SUCCESS! International format '{international_format}' worked with phoneNumberData!")
+            return international_format, f"Success with international format: {international_format}"
+        else:
+            logger.info(f"International format with phoneNumberData failed: {response.status_code} - {response.text}")
+    except Exception as e:
+        logger.error(f"Error testing international format with phoneNumberData: {e}")
+
+    # Fallback: Try simple phoneNumber field with international format
+    try:
+        test_update = {'phoneNumber': international_format}
+        response = requests.put(f"{espocrm_url}/Contact/{contact_id}",
+                              json=test_update, headers=headers, timeout=10)
+
+        if response.status_code in [200, 204]:
+            logger.info(f"SUCCESS! Simple phoneNumber field with '{international_format}' worked!")
+            return international_format, f"Success with simple phoneNumber: {international_format}"
+        else:
+            logger.info(f"Simple phoneNumber failed: {response.status_code}")
+    except Exception as e:
+        logger.error(f"Error testing simple phoneNumber: {e}")
+
+    # Last resort: Try other formats
+    fallback_formats = [
+        f"{digits_only[:3]}-{digits_only[3:6]}-{digits_only[6:]}",  # XXX-XXX-XXXX
+        f"({digits_only[:3]}) {digits_only[3:6]}-{digits_only[6:]}",  # (XXX) XXX-XXXX
     ]
-    
-    logger.info(f"Testing {len(test_formats)} simple phone formats for contact {contact_id}")
-    
-    # Test simple phoneNumber field first
-    for i, test_format in enumerate(test_formats):
+
+    for test_format in fallback_formats:
         try:
-            logger.info(f"Trying simple format {i+1}: '{test_format}'")
+            logger.info(f"Trying fallback format: '{test_format}'")
             test_update = {'phoneNumber': test_format}
-            
-            response = requests.put(f"{espocrm_url}/Contact/{contact_id}", 
+
+            response = requests.put(f"{espocrm_url}/Contact/{contact_id}",
                                   json=test_update, headers=headers, timeout=10)
-            
+
             if response.status_code in [200, 204]:
-                logger.info(f"SUCCESS! Simple format '{test_format}' worked!")
-                return test_format, f"Success with simple phoneNumber field: {test_format}"
-            else:
-                logger.info(f"Simple format '{test_format}' failed: {response.status_code}")
-                
+                logger.info(f"SUCCESS! Fallback format '{test_format}' worked!")
+                return test_format, f"Success with format: {test_format}"
         except Exception as e:
-            logger.error(f"Error testing simple format '{test_format}': {e}")
+            logger.error(f"Error testing fallback format '{test_format}': {e}")
             continue
-    
-    # If simple phoneNumber failed, try phoneNumberData structure
-    logger.info("Simple phoneNumber field failed, trying phoneNumberData structure...")
-    
-    phone_types = ["Mobile", "Work", "Home", "Main", "Other"]
-    
-    for phone_type in phone_types:
-        for test_format in test_formats[:4]:  # Try fewer formats for complex structure
-            try:
-                logger.info(f"Trying phoneNumberData with type '{phone_type}' and format '{test_format}'")
-                
-                phone_data = create_phone_number_data(test_format, phone_type, True)
-                test_update = {'phoneNumberData': phone_data}
-                
-                response = requests.put(f"{espocrm_url}/Contact/{contact_id}", 
-                                      json=test_update, headers=headers, timeout=10)
-                
-                if response.status_code in [200, 204]:
-                    logger.info(f"SUCCESS! phoneNumberData with type '{phone_type}' and format '{test_format}' worked!")
-                    return f"phoneNumberData: {test_format} ({phone_type})", f"Success with phoneNumberData structure: {test_format} as {phone_type}"
-                else:
-                    logger.info(f"phoneNumberData format failed: {response.status_code}")
-                    
-            except Exception as e:
-                logger.error(f"Error testing phoneNumberData: {e}")
-                continue
-    
-    return None, f"All phone formats failed (tried both phoneNumber and phoneNumberData structures)"
+
+    return None, f"All phone formats failed for {phone_string}"
 
 # Input preprocessing
 def preprocess_input(user_input: str) -> Dict[str, Any]:

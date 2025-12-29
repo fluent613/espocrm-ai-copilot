@@ -99,6 +99,23 @@ class CRMManager:
             if 'phoneNumber' in updates or 'phoneNumberData' in updates:
                 logger.info(f"Phone number update detected...")
 
+                # Handle comma-separated phone numbers in phoneNumber field
+                if 'phoneNumber' in updates and ',' in str(updates.get('phoneNumber', '')):
+                    phone_string = updates['phoneNumber']
+                    logger.info(f"Detected comma-separated phones: {phone_string}")
+                    # Split and create phoneNumberData array
+                    phone_parts = [p.strip() for p in phone_string.split(',') if p.strip()]
+                    phone_data_list = []
+                    for i, phone in enumerate(phone_parts):
+                        phone_data_list.append({
+                            'phoneNumber': phone,
+                            'type': 'Mobile',
+                            'primary': i == 0
+                        })
+                    updates['phoneNumberData'] = phone_data_list
+                    del updates['phoneNumber']
+                    logger.info(f"Converted to phoneNumberData: {phone_data_list}")
+
                 # Check if phoneNumberData is provided (supports multiple phones)
                 if 'phoneNumberData' in updates and isinstance(updates['phoneNumberData'], list):
                     phone_data_list = updates['phoneNumberData']
@@ -168,6 +185,22 @@ class CRMManager:
 
             if 'emailAddress' in updates or 'emailAddressData' in updates:
                 logger.info(f"Email address update detected...")
+
+                # Handle comma-separated emails in emailAddress field
+                if 'emailAddress' in updates and ',' in str(updates.get('emailAddress', '')):
+                    email_string = updates['emailAddress']
+                    logger.info(f"Detected comma-separated emails: {email_string}")
+                    # Split and create emailAddressData array
+                    email_parts = [e.strip() for e in email_string.split(',') if e.strip() and '@' in e]
+                    email_data_list = []
+                    for i, email in enumerate(email_parts):
+                        email_data_list.append({
+                            'emailAddress': email.lower(),
+                            'primary': i == 0
+                        })
+                    updates['emailAddressData'] = email_data_list
+                    del updates['emailAddress']
+                    logger.info(f"Converted to emailAddressData: {email_data_list}")
 
                 # Check if emailAddressData is provided (supports multiple emails)
                 if 'emailAddressData' in updates and isinstance(updates['emailAddressData'], list):
